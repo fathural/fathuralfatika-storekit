@@ -1,0 +1,1793 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DSR Report Analytics</title>
+    
+    <!-- Excel, Chart & Html2Canvas SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <!-- Firebase SDK (Compat Version) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <!-- Tailwind & FontAwesome -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .bg-eiger-dark { background-color: #1a2235; }
+        .text-eiger-orange { color: #ff6b00; }
+        .bg-eiger-orange { background-color: #ff6b00; }
+        .hover-eiger-orange:hover { background-color: #e66000; }
+        .card-shadow { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); }
+        .tab-active { color: #ff6b00; border-bottom: 2px solid #ff6b00; font-weight: 600; }
+        .tab-inactive { color: #64748b; font-weight: 500; }
+        
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+        .modal-content { background-color: #fefefe; margin: 2% auto; padding: 24px; border: 1px solid #888; width: 95%; max-width: 1050px; border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        
+        #galleryModal { display: none; align-items: center; justify-content: center; overflow: hidden; padding: 16px; }
+        #galleryModal .modal-content { margin: 0; padding: 0; width: 100%; max-width: 420px; height: 80vh; max-height: 800px; display: flex; flex-direction: column; }
+
+        .ind-red { background-color: #fee2e2; color: #991b1b; border: 1px solid #f87171; }
+        .ind-orange { background-color: #ffedd5; color: #9a3412; border: 1px solid #fb923c; }
+        .ind-green { background-color: #dcfce7; color: #166534; border: 1px solid #4ade80; }
+        .input-disabled { background-color: #f1f5f9; color: #64748b; cursor: not-allowed; border-color: #e2e8f0; }
+
+        header { z-index: 50 !important; }
+        .sticky-tab { z-index: 40 !important; }
+    </style>
+</head>
+<body class="text-slate-800 h-screen overflow-hidden">
+
+    <!-- LOGIN OVERLAY -->
+    <div id="loginOverlay" class="fixed inset-0 bg-eiger-dark z-[2000] flex items-center justify-center p-4 backdrop-blur-md">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center relative overflow-hidden">
+            <div class="bg-orange-50 absolute top-0 left-0 w-full h-24 -z-10 rounded-t-2xl"></div>
+            <h2 class="text-3xl font-black text-slate-800 mb-1 mt-6">DSR Report</h2>
+            <p class="text-xs text-slate-500 mb-8 font-medium">Analitik & Target Generator</p>
+            <div id="roleSelection" class="space-y-3">
+                <button onclick="showPasswordPrompt()" class="w-full bg-slate-800 hover:bg-slate-700 text-white py-3.5 rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-md cursor-pointer">
+                    <i class="fa-solid fa-user-gear text-lg"></i> Login Store Head
+                </button>
+                <button onclick="loginAsRA()" class="w-full bg-eiger-orange hover-eiger-orange text-white py-3.5 rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-md cursor-pointer">
+                    <i class="fa-solid fa-user-tie text-lg"></i> Retail Assistant
+                </button>
+            </div>
+            <div id="passwordSection" class="hidden">
+                <p class="text-sm font-bold text-slate-700 mb-3 text-left">Otorisasi Store Head</p>
+                <input type="password" id="shPassword" placeholder="Masukkan Password..." class="w-full border border-slate-300 px-4 py-3 rounded-xl mb-4 focus:outline-none focus:border-slate-800 focus:ring-1 focus:ring-slate-800 text-sm font-medium">
+                <button onclick="loginAsSH()" class="w-full bg-slate-800 hover:bg-slate-700 text-white py-3.5 rounded-xl font-bold transition mb-2 shadow-md cursor-pointer">Masuk</button>
+                <button onclick="cancelLogin()" class="w-full text-slate-500 hover:text-slate-800 py-2 text-sm font-semibold transition cursor-pointer">Kembali</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Layout Wrapper -->
+    <div id="appContainer" class="h-full overflow-auto hidden">
+        
+        <!-- HEADER MINIMALIS MOBILE & DESKTOP -->
+        <header class="bg-eiger-dark text-white py-2 px-3 lg:py-3 lg:px-6 rounded-b-xl shadow-lg sticky top-0 z-50 flex items-center justify-between gap-3">
+            <div class="flex flex-col flex-shrink-0 max-w-[45%] md:max-w-none">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    <h1 class="text-[13px] md:text-base lg:text-lg font-bold leading-tight truncate">DSR Analitik</h1>
+                    <span id="badgeRole" class="px-1.5 py-0.5 rounded text-[8px] md:text-[9px] uppercase font-bold tracking-wider inline-block"></span>
+                </div>
+                <p class="text-[9px] md:text-[10px] text-slate-400 mt-0.5 hidden sm:block w-full truncate" id="headerCompany"><i class="fa-solid fa-user mr-1"></i> Oleh Fathur Alfatika</p>
+            </div>
+            
+            <div class="flex items-center gap-1.5 md:gap-2 overflow-x-auto hide-scroll pb-0.5 w-full justify-end">
+                <select id="billStatusFilter" class="bg-slate-800 border border-slate-600 text-[10px] md:text-xs rounded px-1.5 py-1 text-white focus:outline-none focus:border-eiger-orange cursor-pointer flex-shrink-0">
+                    <option value="all">Semua Status</option>
+                    <option value="ignore_return">No Retur</option>
+                </select>
+                
+                <div class="relative overflow-hidden inline-block flex-shrink-0">
+                    <button class="bg-eiger-orange hover:bg-[#e66000] text-white px-2 py-1 md:px-3 md:py-1.5 rounded flex items-center gap-1.5 text-[10px] md:text-xs font-bold shadow-sm pointer-events-none">
+                        <i class="fa-solid fa-file-excel"></i> <span class="whitespace-nowrap">Upload DSR</span>
+                    </button>
+                    <input type="file" id="fileUpload" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" accept=".xlsx, .xls, .csv">
+                </div>
+                
+                <div class="relative overflow-hidden inline-block flex-shrink-0">
+                    <button class="bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white px-2 py-1 md:px-3 md:py-1.5 rounded flex items-center gap-1.5 text-[10px] md:text-xs font-bold shadow-sm pointer-events-none">
+                        <i class="fa-solid fa-boxes-stacked"></i> <span id="btnBinText" class="whitespace-nowrap">By Bin</span>
+                    </button>
+                    <input type="file" id="fileUploadBin" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" accept=".xlsx, .xls, .csv">
+                </div>
+                
+                <div id="uploadAdminContainer" class="flex items-center gap-1.5 md:gap-2 hidden flex-shrink-0">
+                    <div class="relative overflow-hidden inline-block">
+                        <button class="bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 md:px-3 md:py-1.5 rounded flex items-center gap-1.5 text-[10px] md:text-xs font-bold shadow-sm pointer-events-none">
+                            <i class="fa-solid fa-images"></i> <span id="btnGambarText" class="whitespace-nowrap hidden md:inline">M. Gambar</span>
+                        </button>
+                        <input type="file" id="fileUploadGambar" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" accept=".xlsx, .xls, .csv">
+                    </div>
+                    <div class="relative overflow-hidden inline-block">
+                        <button class="bg-teal-600 hover:bg-teal-700 text-white px-2 py-1 md:px-3 md:py-1.5 rounded flex items-center gap-1.5 text-[10px] md:text-xs font-bold shadow-sm pointer-events-none">
+                            <i class="fa-solid fa-tags"></i> <span id="btnArtikelText" class="whitespace-nowrap hidden md:inline">M. Artikel</span>
+                        </button>
+                        <input type="file" id="fileUploadArtikel" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" accept=".xlsx, .xls, .csv">
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tab Navigation -->
+        <div class="bg-white border-b px-4 lg:px-8 flex gap-6 lg:gap-8 text-sm pt-4 sticky top-[48px] md:top-[60px] sticky-tab shadow-sm overflow-x-auto whitespace-nowrap">
+            <button class="pb-3 tab-active cursor-pointer" onclick="switchTab('tab-harian', this)">Ini / Per Tanggal <span id="tabDateBadge" class="ml-1 bg-orange-100 text-eiger-orange px-2 py-0.5 rounded text-xs hidden"></span></button>
+            <button class="pb-3 tab-inactive cursor-pointer" onclick="switchTab('tab-breakdown', this)"><i class="fa-solid fa-table-list mr-1"></i> Tabel Breakdown Harian</button>
+            <button class="pb-3 tab-inactive cursor-pointer" onclick="switchTab('tab-ra', this)"><i class="fa-solid fa-user-tie mr-1"></i> Performa RA</button>
+            <button class="pb-3 tab-inactive cursor-pointer" onclick="switchTab('tab-kategori', this)"><i class="fa-solid fa-layer-group mr-1"></i> Analisis MC Level & Promosi</button>
+            <button class="pb-3 tab-inactive cursor-pointer" onclick="switchTab('tab-cekbarang', this)"><i class="fa-solid fa-boxes-stacked mr-1"></i> Cek Barang</button>
+            <button class="pb-3 tab-inactive cursor-pointer" onclick="switchTab('tab-poster', this)"><i class="fa-solid fa-image mr-1"></i> Poster Generator</button>
+        </div>
+
+        <!-- Main Content Area -->
+        <main class="p-4 lg:p-8 max-w-[1600px] mx-auto hidden" id="mainDashboard">
+            
+            <!-- GLOBAL META INFO BAR -->
+            <div id="globalMetaData" class="grid grid-cols-3 gap-2 mb-6 bg-white p-2 rounded-lg border border-slate-200 shadow-sm hidden">
+                <div class="flex flex-col justify-center px-1">
+                    <p class="text-[9px] text-slate-400 font-bold uppercase mb-0.5"><i class="fa-solid fa-location-dot text-eiger-orange mr-1"></i> Lokasi Toko</p>
+                    <p class="text-[10px] font-bold text-slate-700 leading-tight truncate" id="metaLocation">Belum ada data</p>
+                </div>
+                <div class="flex flex-col justify-center border-l border-slate-200 pl-3">
+                    <p class="text-[9px] text-slate-400 font-bold uppercase mb-0.5"><i class="fa-regular fa-calendar text-sky-500 mr-1"></i> Periode Tarikan</p>
+                    <p class="text-[10px] font-bold text-slate-700 leading-tight truncate" id="metaDateRange">- s/d -</p>
+                </div>
+                <div class="flex flex-col justify-center border-l border-slate-200 pl-3">
+                    <p class="text-[9px] text-slate-400 font-bold uppercase mb-0.5"><i class="fa-solid fa-database text-emerald-500 mr-1"></i> Status Data</p>
+                    <p class="text-[10px] font-bold text-slate-700 leading-tight"><span id="metaRows" class="text-emerald-600">0</span> <span class="font-normal text-[9px] text-slate-400">Baris Valid</span></p>
+                </div>
+            </div>
+
+            <!-- TAB 1: HARIAN / DASHBOARD -->
+            <div id="tab-harian" class="tab-content block">
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-white p-4 rounded-xl card-shadow border border-slate-100 mb-6 gap-4">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-orange-50 text-eiger-orange p-2 rounded-lg"><i class="fa-regular fa-calendar-check text-xl"></i></div>
+                        <div>
+                            <h2 class="font-bold text-slate-800 text-base">Dashboard Rincian Harian</h2>
+                            <p class="text-[11px] lg:text-xs text-slate-500">Pilih tanggal untuk melihat detail pencapaian (Hanya 91)</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2 items-center w-full lg:w-auto">
+                        <select id="dateSelector" class="flex-1 lg:flex-none border border-slate-300 rounded-lg px-3 py-2 text-sm font-semibold focus:outline-none focus:border-eiger-orange cursor-pointer">
+                            <option value="ALL">Semua Tanggal (Komulatif)</option>
+                        </select>
+                        <button id="btnCumulative" class="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer">Komulatif Bulan Ini</button>
+                        <button id="btnExportChat" class="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+                            <i class="fa-brands fa-whatsapp"></i> Export Pesan
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-6 gap-4 mb-6">
+                    <div class="bg-eiger-orange text-white p-5 rounded-xl shadow-lg relative overflow-hidden lg:col-span-2 flex flex-col justify-between">
+                        <i class="fa-solid fa-arrow-trend-up absolute -right-4 -bottom-4 text-8xl opacity-20"></i>
+                        <div>
+                            <p class="text-[10px] font-bold uppercase tracking-wider mb-1 opacity-90">TOTAL GROSS SALES (ONLY 91)</p>
+                            <h3 class="text-3xl lg:text-4xl font-extrabold mb-1" id="kpiGross">Rp 0</h3>
+                            <div class="flex items-center gap-2 text-xs font-semibold mt-1">
+                                <span class="bg-black/20 px-2 py-0.5 rounded" id="targetLabelInfo">Target: Rp 0</span>
+                                <span class="px-2 py-0.5 rounded text-white bg-white/20" id="targetAchBadge">0% Ach</span>
+                            </div>
+                        </div>
+                        <div class="mt-4 border-t border-white/20 pt-2 flex justify-between items-end">
+                            <div>
+                                <p class="text-[10px] font-bold uppercase tracking-wider mb-0.5 opacity-90">NET SALES NETTO</p>
+                                <h4 class="text-lg lg:text-xl font-bold" id="kpiNet">Rp 0</h4>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="lg:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-3 lg:gap-4">
+                        <div class="flex flex-col gap-3 lg:gap-4">
+                            <div class="bg-white p-3 rounded-xl card-shadow border border-slate-100 flex flex-col justify-center items-center text-center flex-1">
+                                <p class="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider"><i class="fa-solid fa-receipt text-sky-500 mr-1"></i> TRX / QTY</p>
+                                <h3 class="text-base lg:text-lg font-extrabold text-slate-800" id="kpiTrxQty">0 / 0</h3>
+                            </div>
+                            <div class="bg-white p-3 rounded-xl card-shadow border border-slate-100 flex flex-col justify-center items-center text-center flex-1">
+                                <p class="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider"><i class="fa-solid fa-box-open text-amber-500 mr-1"></i> UPT</p>
+                                <h3 class="text-base lg:text-lg font-extrabold text-slate-800" id="kpiUpt">0,00</h3>
+                            </div>
+                        </div>
+                        <div class="bg-white p-4 lg:p-5 rounded-xl card-shadow border border-slate-100 flex flex-col justify-center items-center text-center col-span-1">
+                            <p class="text-[10px] lg:text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider"><i class="fa-solid fa-basket-shopping text-emerald-500 mr-1"></i> BASKET SIZE</p>
+                            <h3 class="text-lg lg:text-xl font-extrabold text-emerald-600 mb-1" id="kpiBasketSize">Rp 0</h3>
+                        </div>
+                        <div class="bg-white p-4 lg:p-5 rounded-xl card-shadow border border-slate-100 flex flex-col justify-center items-center text-center col-span-2">
+                             <p class="text-[10px] lg:text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider"><i class="fa-solid fa-users text-indigo-500 mr-1"></i> KONTRIBUSI MEMBER</p>
+                             <h3 class="text-xl lg:text-2xl font-extrabold text-indigo-600 mb-1" id="kpiMemberGross">Rp 0</h3>
+                             <div class="mt-2 text-xs lg:text-sm font-bold text-slate-700 bg-slate-50 px-3 py-1 rounded-full border border-slate-200" id="kpiMemberPct">0% dari Total Sales</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl card-shadow border border-slate-100 overflow-hidden">
+                    <div class="p-3 lg:p-4 border-b flex flex-col sm:flex-row justify-between sm:items-center bg-slate-50 gap-3">
+                        <h3 class="font-bold text-slate-800 text-sm lg:text-base">Rincian Transaksi Item</h3>
+                        <div class="relative w-full sm:w-auto">
+                            <i class="fa-solid fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm"></i>
+                            <input type="text" id="searchItem" placeholder="Cari SKU, Nama, Invoice..." class="w-full sm:w-64 pl-9 pr-4 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-eiger-orange">
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto max-h-[500px]">
+                        <table class="w-full text-sm text-left whitespace-nowrap lg:whitespace-normal">
+                            <thead class="text-xs text-slate-500 bg-slate-100 uppercase sticky top-0 z-10">
+                                <tr>
+                                    <th class="px-4 py-3">Waktu</th>
+                                    <th class="px-4 py-3">Invoice No</th>
+                                    <th class="px-4 py-3">SKU & Nama Barang</th>
+                                    <th class="px-4 py-3">Kategori (Lv.4)</th>
+                                    <th class="px-4 py-3 text-center">Qty</th>
+                                    <th class="px-4 py-3 text-right">Gross (Rp)</th>
+                                    <th class="px-4 py-3 text-right">Diskon (Rp)</th>
+                                    <th class="px-4 py-3 text-right">Netto (Rp)</th>
+                                    <th class="px-4 py-3">Nama RA</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableItemsBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: BREAKDOWN HARIAN -->
+            <div id="tab-breakdown" class="tab-content hidden">
+                <div class="bg-white rounded-xl card-shadow border border-slate-100 p-4 lg:p-6 mb-6">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+                        <div>
+                            <h3 class="text-base lg:text-lg font-bold text-slate-800">Rekapitulasi Penjualan Komulatif Harian</h3>
+                            <p class="text-[11px] lg:text-sm text-slate-500">Lacak pencapaian omset dari hari ke hari (Hanya 91).</p>
+                        </div>
+                        <button onclick="openCumulativeExportModal()" class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs lg:text-sm font-semibold transition flex items-center gap-2 shadow-sm cursor-pointer">
+                            <i class="fa-brands fa-whatsapp"></i> Export Pesan Komulatif
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto rounded-lg border border-slate-200">
+                        <table class="w-full text-sm text-left whitespace-nowrap">
+                            <thead class="text-[11px] lg:text-xs text-slate-300 bg-slate-900 uppercase">
+                                <tr>
+                                    <th class="px-4 py-4">Tanggal</th>
+                                    <th class="px-4 py-4 text-right">Gross (Rp)</th>
+                                    <th class="px-4 py-4 text-right">Netto (Rp)</th>
+                                    <th class="px-4 py-4 text-center">Qty Jual</th>
+                                    <th class="px-4 py-4 text-center text-sky-400">Basket Size</th>
+                                    <th class="px-4 py-4 text-center text-amber-400">UPT</th>
+                                    <th class="px-4 py-4 text-center">Struk</th>
+                                    <th class="px-4 py-4 text-right text-emerald-400">Komulatif Gross (Rp)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableDailyBody" class="divide-y divide-slate-200 bg-white"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: RA & TAGGING PER-HEAD -->
+            <div id="tab-ra" class="tab-content hidden">
+                <div id="raTableCard" class="bg-white rounded-xl card-shadow border border-slate-100 p-4 lg:p-6 mb-6">
+                    <div class="flex justify-between items-end mb-4">
+                        <div>
+                            <h3 class="text-base lg:text-lg font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-user-tie text-eiger-orange"></i> Performa Retail Assistant (RA)</h3>
+                            <p class="text-[11px] lg:text-sm text-slate-500 mt-1">Evaluasi pencapaian per RA (Hanya 91).</p>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto rounded-lg border border-slate-200">
+                        <table class="w-full text-sm text-left whitespace-nowrap">
+                            <thead class="text-xs text-slate-500 bg-slate-50 uppercase cursor-pointer select-none">
+                                <tr>
+                                    <th class="px-4 py-3 hover:bg-slate-100" onclick="sortTable('ra', 0)">Nama RA <i class="fa-solid fa-sort ml-1 text-slate-400"></i></th>
+                                    <th class="px-4 py-3 text-center hover:bg-slate-100" onclick="sortTable('ra', 1)">Transaction <i class="fa-solid fa-sort ml-1 text-slate-400"></i></th>
+                                    <th class="px-4 py-3 text-center hover:bg-slate-100" onclick="sortTable('ra', 2)">Qty Jual <i class="fa-solid fa-sort ml-1 text-slate-400"></i></th>
+                                    <th class="px-4 py-3 text-center hover:bg-slate-100 text-amber-600" onclick="sortTable('ra', 3)">UPT <i class="fa-solid fa-sort ml-1 text-slate-400"></i></th>
+                                    <th class="px-4 py-3 text-center hover:bg-slate-100 text-sky-600" onclick="sortTable('ra', 4)">Basket Size <i class="fa-solid fa-sort ml-1 text-slate-400"></i></th>
+                                    <th class="px-4 py-3 text-right hover:bg-slate-100 text-eiger-orange font-bold" onclick="sortTable('ra', 5)">Gross <i class="fa-solid fa-sort ml-1 text-slate-400"></i></th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableRABody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="fullTaggingCard" class="bg-white rounded-xl card-shadow border border-slate-100 p-4 lg:p-6 mb-6 relative overflow-hidden">
+                    <div id="settingsLoading" class="absolute inset-0 bg-white/80 z-10 flex items-center justify-center backdrop-blur-sm hidden">
+                        <div class="text-slate-500 font-semibold text-sm"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Sinkronisasi Cloud...</div>
+                    </div>
+                    <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center mb-4 gap-4 border-b border-slate-100 pb-4">
+                        <div>
+                            <h3 class="text-base lg:text-lg font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-table-cells text-eiger-orange"></i> TAGGING PER-HEAD</h3>
+                        </div>
+                        <div class="flex flex-wrap gap-2 lg:gap-3 bg-slate-50 p-2 lg:p-3 rounded-xl border border-slate-200 items-end shadow-inner w-full xl:w-auto">
+                            <div>
+                                <label class="block text-[9px] lg:text-[10px] font-bold text-slate-600 uppercase mb-1">Target Gross (Rp)</label>
+                                <input type="number" id="inputTargetGross" value="0" class="target-input w-24 lg:w-32 border border-slate-300 rounded px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-slate-800 transition-colors">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] lg:text-[10px] font-bold text-slate-600 uppercase mb-1">% E.Aisle</label>
+                                <input type="number" step="0.1" id="inputPctEA" value="0.0" class="target-input w-16 lg:w-20 border border-slate-300 rounded px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-slate-800 transition-colors">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] lg:text-[10px] font-bold text-slate-600 uppercase mb-1">% W.Sale</label>
+                                <input type="number" step="0.1" id="inputPctWS" value="0.0" class="target-input w-16 lg:w-20 border border-slate-300 rounded px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-slate-800 transition-colors">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] lg:text-[10px] font-bold text-slate-600 uppercase mb-1">% T.Travel</label>
+                                <input type="number" step="0.1" id="inputPctTT" value="0.0" class="target-input w-16 lg:w-20 border border-slate-300 rounded px-2 py-1.5 text-xs font-bold focus:outline-none focus:border-slate-800 transition-colors">
+                            </div>
+                            <div class="flex gap-2 w-full lg:w-auto mt-2 lg:mt-0">
+                                <button onclick="screenshotFullTaggingCard()" class="flex-1 lg:flex-none bg-eiger-orange hover-eiger-orange text-white px-3.5 py-2 rounded-lg text-[10px] lg:text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm h-9 cursor-pointer">
+                                    <i class="fa-solid fa-camera"></i> SS
+                                </button>
+                                <button id="btnSaveTarget" onclick="saveTargetsToFirebase()" class="flex-1 lg:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-[10px] lg:text-xs font-bold transition flex items-center justify-center gap-2 shadow-md hidden h-9 cursor-pointer">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i> Simpan
+                                </button>
+                            </div>
+                            <span id="badgeCloud" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded hidden h-9 flex items-center"><i class="fa-solid fa-cloud-check mr-1"></i> Live</span>
+                        </div>
+                    </div>
+                    <div class="mb-3 flex justify-between items-center text-xs">
+                        <span id="totalShareIndicator" class="font-bold text-slate-600">Total Share RA: 100%</span>
+                    </div>
+                    <div class="overflow-x-auto rounded-lg border border-slate-200">
+                        <table class="w-full text-sm text-left border-collapse whitespace-nowrap">
+                            <thead>
+                                <tr class="bg-slate-900 text-white uppercase text-[10px] lg:text-xs">
+                                    <th class="p-2 lg:p-3.5 border border-slate-700 w-40 lg:w-48">Sales Person & Share</th>
+                                    <th class="p-2 lg:p-3.5 border border-slate-700 text-right">Walk In (<span id="lblPctWI">0</span>%)</th>
+                                    <th class="p-2 lg:p-3.5 border border-slate-700 text-right">Endless Aisle</th>
+                                    <th class="p-2 lg:p-3.5 border border-slate-700 text-right">Wholesale</th>
+                                    <th class="p-2 lg:p-3.5 border border-slate-700 text-right">Tour & Travel</th>
+                                    <th class="p-2 lg:p-3.5 border border-slate-700 text-right bg-slate-800">Total Gross</th>
+                                    <th class="p-2 lg:p-3.5 border border-slate-700 text-center bg-slate-800">Total % Ach</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableTaggingBody" class="divide-y divide-slate-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: KATEGORI & PROMOSI -->
+            <div id="tab-kategori" class="tab-content hidden">
+                <div class="bg-white rounded-xl card-shadow border border-slate-100 p-4 lg:p-6 mb-6">
+                    <div class="flex justify-between items-end mb-4">
+                        <div>
+                            <h3 class="text-base lg:text-lg font-bold text-slate-800">Komparasi MC Lv. 4 (Stok Bin vs Sales)</h3>
+                            <p class="text-[11px] lg:text-sm text-slate-500">Perbandingan stok fisik terhadap sales. <br><span class="text-[10px] lg:text-xs text-red-500 font-medium">*Harga Stok dihitung berdasar referensi Master Artikel.</span></p>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto max-h-[400px] rounded-lg border border-slate-200">
+                        <table class="w-full text-sm text-left relative whitespace-nowrap">
+                            <thead class="text-xs text-slate-500 bg-slate-50 uppercase cursor-pointer select-none sticky top-0 shadow-sm z-20">
+                                <tr>
+                                    <th class="px-4 py-3 border border-slate-200 hover:bg-slate-100 bg-slate-100" onclick="sortMCLv4Compare(0)">MC Lv. 4 <i class="fa-solid fa-sort ml-1"></i></th>
+                                    <th class="px-4 py-3 border border-slate-200 text-center hover:bg-slate-100" onclick="sortMCLv4Compare(1)">Stok Bin Qty <i class="fa-solid fa-sort ml-1"></i></th>
+                                    <th class="px-4 py-3 border border-slate-200 text-center hover:bg-slate-100" onclick="sortMCLv4Compare(2)">Sales Qty <i class="fa-solid fa-sort ml-1"></i></th>
+                                    <th class="px-4 py-3 border border-slate-200 text-center hover:bg-slate-100 text-eiger-orange bg-orange-50" onclick="sortMCLv4Compare(3)">% Qty <i class="fa-solid fa-sort ml-1"></i></th>
+                                    <th class="px-4 py-3 border border-slate-200 text-right hover:bg-slate-100" onclick="sortMCLv4Compare(4)">Nilai Stok Bin <i class="fa-solid fa-sort ml-1"></i></th>
+                                    <th class="px-4 py-3 border border-slate-200 text-right hover:bg-slate-100" onclick="sortMCLv4Compare(5)">Gross Sales <i class="fa-solid fa-sort ml-1"></i></th>
+                                    <th class="px-4 py-3 border border-slate-200 text-center hover:bg-slate-100 text-eiger-orange bg-orange-50" onclick="sortMCLv4Compare(6)">% Gross <i class="fa-solid fa-sort ml-1"></i></th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableMCLv4CompareBody" class="divide-y divide-slate-100">
+                                <tr><td colspan="7" class="text-center py-6 text-slate-400 text-sm">Harap upload data DSR dan By Bin untuk melihat komparasi.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-6">
+                    <div class="bg-white rounded-xl card-shadow border border-slate-100 p-4 lg:p-6">
+                        <h3 class="text-base lg:text-lg font-bold text-slate-800 mb-3 lg:mb-4">Kinerja Kategori Utama (MC Lv. 3)</h3>
+                        <div class="overflow-x-auto rounded-lg border border-slate-200">
+                            <table class="w-full text-sm text-left whitespace-nowrap">
+                                <thead class="text-xs text-slate-500 bg-slate-50 uppercase cursor-pointer select-none">
+                                    <tr>
+                                        <th class="px-4 py-3 hover:bg-slate-100 border-b border-slate-200" onclick="sortTable('mc3', 0)">Kategori <i class="fa-solid fa-sort ml-1"></i></th>
+                                        <th class="px-4 py-3 text-right hover:bg-slate-100 border-b border-slate-200" onclick="sortTable('mc3', 1)">Gross Sales <i class="fa-solid fa-sort ml-1"></i></th>
+                                        <th class="px-4 py-3 text-center hover:bg-slate-100 border-b border-slate-200" onclick="sortTable('mc3', 2)">Qty Terjual <i class="fa-solid fa-sort ml-1"></i></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tableMC3Body" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl card-shadow border border-slate-100 p-4 lg:p-6">
+                        <h3 class="text-base lg:text-lg font-bold text-slate-800 mb-3 lg:mb-4">Rincian Sub-Kategori (MC Lv. 4)</h3>
+                        <div class="overflow-x-auto h-[400px] rounded-lg border border-slate-200">
+                            <table class="w-full text-sm text-left relative whitespace-nowrap">
+                                <thead class="text-xs text-slate-500 bg-slate-50 uppercase cursor-pointer select-none sticky top-0 shadow-sm z-20 border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-3 hover:bg-slate-100" onclick="sortTable('mc4', 0)">Sub-Kategori <i class="fa-solid fa-sort ml-1"></i></th>
+                                        <th class="px-4 py-3 hover:bg-slate-100" onclick="sortTable('mc4', 1)">Induk (Lv.3) <i class="fa-solid fa-sort ml-1"></i></th>
+                                        <th class="px-4 py-3 text-right hover:bg-slate-100" onclick="sortTable('mc4', 2)">Gross Sales <i class="fa-solid fa-sort ml-1"></i></th>
+                                        <th class="px-4 py-3 text-center hover:bg-slate-100" onclick="sortTable('mc4', 3)">Qty <i class="fa-solid fa-sort ml-1"></i></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tableMC4Body" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl card-shadow border border-slate-100 p-4 lg:p-6 flex flex-col mb-6">
+                    <h3 class="text-base lg:text-lg font-bold text-slate-800 mb-1">Trafik Zona Waktu Transaksi (Per Jam)</h3>
+                    <p class="text-[11px] lg:text-xs text-slate-500 mb-4">Jumlah frekuensi kedatangan & transaksi (struk) berdasarkan jam operasional.</p>
+                    <div class="relative w-full" style="height: 250px;">
+                        <canvas id="chartTime"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: CEK BARANG (BY BIN) -->
+            <div id="tab-cekbarang" class="tab-content hidden">
+                
+                <!-- ANALITIK BARANG BELUM TERDISPLAY -->
+                <div id="undisplayedSection" class="hidden mb-6 bg-slate-50 rounded-xl border border-slate-200 p-4 lg:p-6 shadow-sm">
+                    <div class="flex flex-col lg:flex-row justify-between lg:items-center mb-4 gap-4">
+                        <div>
+                            <h3 class="text-base lg:text-lg font-bold text-slate-800 mb-1"><i class="fa-solid fa-eye-slash text-red-500 mr-2"></i>Analitik Display Area</h3>
+                            <p class="text-[11px] lg:text-xs text-slate-500">Pilih mode tampilan untuk melacak ketersediaan stok fisik di rak pajang.</p>
+                        </div>
+                        
+                        <div class="flex flex-wrap gap-2 lg:gap-4">
+                            <label class="flex-1 lg:flex-none items-center gap-2 cursor-pointer bg-white px-3 lg:px-4 py-2 rounded-lg border border-slate-200 shadow-sm hover:bg-slate-100 transition flex justify-center">
+                                <input type="radio" name="displayMode" value="undisplayed" checked class="w-4 h-4 text-eiger-orange" onchange="activeDisplayParentFilter='ALL'; renderDisplayCards()">
+                                <span class="text-xs lg:text-sm font-bold text-slate-700">Belum Display</span>
+                            </label>
+                            <label class="flex-1 lg:flex-none items-center gap-2 cursor-pointer bg-white px-3 lg:px-4 py-2 rounded-lg border border-slate-200 shadow-sm hover:bg-slate-100 transition flex justify-center">
+                                <input type="radio" name="displayMode" value="double" class="w-4 h-4 text-eiger-orange" onchange="activeDisplayParentFilter='ALL'; renderDisplayCards()">
+                                <span class="text-xs lg:text-sm font-bold text-slate-700">Double Display</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-5 relative">
+                        <div class="flex justify-end mb-1 pr-[5%]">
+                            <span class="text-[9px] lg:text-[10px] font-bold text-slate-800 text-center leading-tight">95%<br>(minimum)</span>
+                        </div>
+                        <div class="w-full h-6 lg:h-8 border-2 border-orange-500 rounded relative bg-white overflow-hidden shadow-inner">
+                            <div id="displayProgressBar" class="h-full bg-[#0a0a64] flex items-center justify-center text-white text-[10px] lg:text-xs font-bold transition-all duration-500 whitespace-nowrap" style="width: 0%;">0% terdisplay</div>
+                            <div class="absolute top-0 bottom-0 right-[5%] w-1 bg-gray-400 h-10 -mt-1 z-10 opacity-80"></div>
+                        </div>
+                    </div>
+
+                    <!-- NEW: MC LVL 3 FILTER -->
+                    <div id="undisplayedMC3Container" class="flex flex-wrap gap-2 lg:gap-3 mb-4 pb-4 border-b border-slate-200">
+                        <!-- Dimuat Otomatis oleh JavaScript -->
+                    </div>
+
+                    <div id="undisplayedCardsContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 lg:gap-3 max-h-[300px] lg:max-h-[350px] overflow-y-auto pr-1 pb-1">
+                        <!-- Dimuat Otomatis oleh JavaScript -->
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl card-shadow border border-slate-100 p-4 lg:p-6 mb-6">
+                    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-4 gap-4 border-b border-slate-100 pb-4">
+                        <div class="w-full lg:w-auto">
+                            <h3 class="text-base lg:text-lg font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-boxes-stacked text-eiger-orange"></i> Cek Barang (By Bin)</h3>
+                            <p class="text-[11px] lg:text-xs text-slate-500 mt-1">Gunakan filter untuk melacak ketersediaan dan lokasi stok per artikel.</p>
+                        </div>
+                        <div class="flex flex-col w-full lg:w-auto gap-2">
+                            <!-- Indikator Firebase Save By Bin -->
+                            <div class="flex justify-between lg:justify-end items-center bg-sky-50 px-3 py-1.5 rounded-lg border border-sky-100 text-[10px] lg:text-xs font-bold text-sky-800 shadow-inner">
+                                <div class="flex items-center gap-1.5">
+                                    <i class="fa-solid fa-cloud-arrow-down" id="loadingBinIcon" style="display:none;"></i> 
+                                    <i class="fa-solid fa-cloud" id="cloudBinIcon"></i> 
+                                    <span>Cloud By Bin:</span>
+                                </div>
+                                <span id="lastUploadBinTime" class="text-eiger-orange ml-2 text-right truncate">-</span>
+                            </div>
+                            <!-- Info Gambar Master Cache -->
+                            <div id="lastUpdateContainer" class="text-[10px] text-slate-400 italic hidden flex items-center justify-end w-full lg:w-auto">
+                                <i class="fa-solid fa-cloud-arrow-down text-emerald-500 mr-1" id="loadingGambarIcon" style="display:none;"></i> 
+                                <i class="fa-regular fa-image mr-1" id="clockGambarIcon"></i> 
+                                <span id="lastUpdateText">Last Update Master: -</span>
+                            </div>
+                            <div id="totalQtyContainer" class="text-xs lg:text-[13px] font-extrabold text-eiger-orange hidden flex justify-between lg:flex-col lg:text-right mt-1 w-full lg:w-auto bg-slate-50 lg:bg-transparent p-2 lg:p-0 rounded border border-slate-100 lg:border-none">
+                                <span>Total QTY: <span id="totalQtyText">0</span> <span class="text-[10px] lg:text-xs font-medium text-slate-500">Pcs</span></span>
+                                <span class="text-slate-600 text-[11px] lg:text-xs mt-0.5">Total Harga: <span id="totalHargaText" class="text-emerald-600">Rp 0</span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BIN FILTER SECTION -->
+                    <div id="binFilterSection" class="hidden mb-4 lg:mb-6">
+                        <div class="bg-slate-50 p-3 lg:p-4 rounded-xl border border-slate-200 space-y-3 lg:space-y-4">
+                            <div>
+                                <label class="block text-[10px] lg:text-[11px] font-bold text-slate-600 uppercase mb-1.5"><i class="fa-solid fa-search text-slate-400 mr-1"></i> Pencarian Free Text</label>
+                                <input type="text" id="searchBinInput" placeholder="Contoh: blk 44, WA-01, nama artikel..." class="w-full px-3 lg:px-4 py-2 border border-slate-300 rounded-lg text-xs lg:text-sm focus:outline-none focus:border-eiger-orange shadow-sm font-medium">
+                            </div>
+                            <div class="flex flex-col sm:flex-row gap-3 lg:gap-4 pt-1 lg:pt-2">
+                                <div class="relative inline-block text-left w-full sm:w-1/2" id="dropdownContainerMC2">
+                                    <button onclick="toggleDropdown('dropdownMC2')" class="bg-white hover:bg-slate-50 border border-slate-300 px-3 py-2 rounded-lg text-xs lg:text-sm font-semibold text-slate-700 flex justify-between items-center w-full transition shadow-sm">
+                                        <span class="truncate"><i class="fa-solid fa-filter text-eiger-orange mr-2"></i> Filter Kategori (MC 2)</span>
+                                        <i class="fa-solid fa-chevron-down text-[10px] lg:text-xs text-slate-400 ml-2"></i>
+                                    </button>
+                                    <div id="dropdownMC2" class="hidden absolute z-20 mt-1 lg:mt-2 w-full bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden">
+                                        <div class="p-2 border-b bg-white relative">
+                                            <i class="fa-solid fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 text-[10px]"></i>
+                                            <input type="text" id="searchMC2" onkeyup="filterDropdownList('searchMC2', 'filterCheckboxContainer')" placeholder="Cari filter..." class="w-full pl-7 pr-2 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-eiger-orange">
+                                        </div>
+                                        <div class="p-2 border-b bg-slate-50 flex gap-2">
+                                            <button onclick="selectAllMC('mc2-checkbox', true)" class="flex-1 text-[10px] lg:text-[11px] bg-slate-200 hover:bg-slate-300 text-slate-700 py-1.5 rounded font-bold transition">Pilih Semua</button>
+                                            <button onclick="selectAllMC('mc2-checkbox', false)" class="flex-1 text-[10px] lg:text-[11px] bg-red-100 hover:bg-red-200 text-red-600 py-1.5 rounded font-bold transition">Kosongkan</button>
+                                        </div>
+                                        <div id="filterCheckboxContainer" class="max-h-48 lg:max-h-56 overflow-y-auto p-2 flex flex-col gap-1"></div>
+                                    </div>
+                                </div>
+                                <div class="relative inline-block text-left w-full sm:w-1/2" id="dropdownContainerMC4">
+                                    <button onclick="toggleDropdown('dropdownMC4')" class="bg-white hover:bg-slate-50 border border-slate-300 px-3 py-2 rounded-lg text-xs lg:text-sm font-semibold text-slate-700 flex justify-between items-center w-full transition shadow-sm">
+                                        <span class="truncate"><i class="fa-solid fa-filter text-emerald-600 mr-2"></i> Filter Sub-Kat (MC 4)</span>
+                                        <i class="fa-solid fa-chevron-down text-[10px] lg:text-xs text-slate-400 ml-2"></i>
+                                    </button>
+                                    <div id="dropdownMC4" class="hidden absolute z-20 mt-1 lg:mt-2 w-full bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden">
+                                        <div class="p-2 border-b bg-white relative">
+                                            <i class="fa-solid fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 text-[10px]"></i>
+                                            <input type="text" id="searchMC4" onkeyup="filterDropdownList('searchMC4', 'filterCheckboxContainerMc4')" placeholder="Cari filter..." class="w-full pl-7 pr-2 py-1.5 border border-slate-300 rounded text-xs focus:outline-none focus:border-eiger-orange">
+                                        </div>
+                                        <div class="p-2 border-b bg-slate-50 flex gap-2">
+                                            <button onclick="selectAllMC('mc4-checkbox', true)" class="flex-1 text-[10px] lg:text-[11px] bg-slate-200 hover:bg-slate-300 text-slate-700 py-1.5 rounded font-bold transition">Pilih Semua</button>
+                                            <button onclick="selectAllMC('mc4-checkbox', false)" class="flex-1 text-[10px] lg:text-[11px] bg-red-100 hover:bg-red-200 text-red-600 py-1.5 rounded font-bold transition">Kosongkan</button>
+                                        </div>
+                                        <div id="filterCheckboxContainerMc4" class="max-h-48 lg:max-h-56 overflow-y-auto p-2 flex flex-col gap-1"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GRID CARD BIN AREA -->
+<div class="overflow-y-auto max-h-[70vh] lg:max-h-[600px] hidden hide-scroll p-1" id="binTableContainer">
+    <div id="tableBinBody" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
+        <!-- Card akan dimuat otomatis oleh JavaScript -->
+    </div>
+</div>
+                    
+                    <div id="binUploadPlaceholder" class="flex flex-col items-center justify-center py-8 lg:py-12 text-slate-400 text-center px-4">
+                        <i class="fa-solid fa-boxes-stacked text-4xl lg:text-5xl mb-3 lg:mb-4 text-slate-300"></i>
+                        <h2 class="text-base lg:text-lg font-semibold text-slate-600">Tabel Cek Barang Kosong</h2>
+                        <p class="text-xs lg:text-sm mt-2">Silakan klik "By Bin" di sudut kanan atas Header, atau tunggu jika data Cloud (Reset 00:00) masih dimuat.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 6: POSTER GENERATOR -->
+            <div id="tab-poster" class="tab-content hidden">
+                <div class="bg-white rounded-xl card-shadow border border-slate-100 p-4 lg:p-6 mb-6">
+                    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-4 gap-4 border-b border-slate-100 pb-4">
+                        <div>
+                            <h3 class="text-base lg:text-lg font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-images text-eiger-orange"></i> Poster Generator</h3>
+                            <p class="text-[11px] lg:text-xs text-slate-500 mt-1">Generate story promosi 9:16. Masukkan SKU untuk memuat data.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 w-full lg:w-auto">
+                            <div class="relative overflow-hidden inline-block flex-1 lg:flex-none">
+                                <button class="w-full bg-slate-700 hover:bg-slate-600 text-white px-3 lg:px-4 py-2 rounded-lg text-xs lg:text-sm font-semibold transition flex items-center justify-center gap-2 shadow-sm pointer-events-none">
+                                    <i class="fa-solid fa-upload"></i> Upload Template
+                                </button>
+                                <input type="file" id="uploadPosterTemplate" class="absolute inset-0 opacity-0 cursor-pointer w-full h-full" accept="image/*">
+                            </div>
+                            <button onclick="exportPoster()" class="flex-1 lg:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-3 lg:px-4 py-2 rounded-lg text-xs lg:text-sm font-semibold transition flex items-center justify-center gap-2 shadow-sm cursor-pointer">
+                                <i class="fa-solid fa-download"></i> Export Poster
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-col lg:flex-row gap-6 lg:gap-8">
+                        <!-- Left Controls -->
+                        <div class="w-full lg:w-1/3 flex flex-col gap-4">
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <label class="block text-[10px] lg:text-xs font-bold text-slate-600 uppercase mb-2">Cari Artikel (SKU)</label>
+                                <div class="flex gap-2">
+                                    <input type="text" id="posterSkuInput" placeholder="Masukkan SKU..." class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs lg:text-sm focus:outline-none focus:border-eiger-orange font-medium">
+                                    <button onclick="executePoster()" class="bg-eiger-orange hover-eiger-orange text-white px-4 py-2 rounded-lg text-xs lg:text-sm font-bold shadow-sm transition cursor-pointer">Execute</button>
+                                </div>
+                            </div>
+                            
+                            <div class="text-[10px] lg:text-xs text-slate-500 bg-blue-50 text-blue-800 p-4 rounded-xl border border-blue-100">
+                                <ul class="list-disc pl-4 space-y-1">
+                                    <li>Klik area kosong / template, tahan dan geser untuk menyesuaikan rasio Background.</li>
+                                    <li>Gunakan scroll mouse atau cubit (touch) untuk <b>Zoom</b> gambar atau Background.</li>
+                                    <li>Klik dan tahan (drag) untuk <b>Menggeser</b> posisi gambar dalam kotak.</li>
+                                    <li>Gunakan tombol <b><</b> dan <b>></b> di pojok kotak untuk mengganti variasi gambar.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Right Canvas Workspace -->
+                        <div class="w-full lg:w-2/3 flex justify-center bg-slate-100 p-4 rounded-xl border border-slate-200 overflow-hidden relative overflow-x-auto">
+                            <!-- Wrapper skala statik (Ukuran Canvas Fixed 405x720) -->
+                            <div id="posterWorkspace" class="relative shadow-xl overflow-hidden shrink-0" style="width: 405px; height: 720px; background-color: #ffffff; transform-origin: top center; z-index: 10;">
+                                <!-- Template Background -->
+                                <div id="posterBgContainer" class="absolute inset-0 z-0 cursor-grab">
+                                    <div id="posterBgWrapper" class="absolute inset-0 flex items-center justify-center origin-center hidden" style="transform: translate(0px, 0px) scale(1);">
+                                        <img id="posterBg" src="" alt="Template Poster" class="w-full h-full object-cover">
+                                    </div>
+                                    <div id="posterBgPlaceholder" class="absolute inset-0 w-full h-full bg-slate-200 flex flex-col items-center justify-center text-slate-400 z-0 pointer-events-none">
+                                        <i class="fa-solid fa-image text-4xl mb-2"></i>
+                                        <span class="text-sm font-bold">Template Belum Diunggah</span>
+                                    </div>
+                                </div>
+                                <!-- Text Overlays -->
+                                <div class="absolute z-20 top-[180px] left-[30px] w-[150px] text-center pointer-events-none">
+                                    <div id="posterName" class="text-[11px] font-extrabold text-slate-800 leading-relaxed mb-1 break-words uppercase pt-2 pb-1 px-1"><<NAMA_ARTIKEL>></div>
+                                    <div id="posterGenCode" class="text-[10px] font-bold text-slate-600 mb-1"><<GENERIC_CODE>></div>
+                                    <div id="posterPrice" class="text-[12px] font-extrabold text-red-600 pb-1"><<HARGA>></div>
+                                </div>
+                                <!-- Image Boxes -->
+                                <div class="image-box absolute z-10 top-[265px] left-[10px] w-[180px] h-[190px] bg-white rounded-lg overflow-hidden border border-slate-300 flex items-center justify-center" data-idx="0"><div class="draggable-wrapper hidden absolute inset-0 flex items-center justify-center origin-center" style="transform: translate(0px, 0px) scale(1);"><img src="" class="draggable-img max-w-full max-h-full pointer-events-none"></div><div class="box-controls absolute bottom-1 right-1 flex gap-1 bg-white/80 rounded px-1 hidden z-20"><button class="prev-btn text-xs font-bold px-1 hover:text-eiger-orange cursor-pointer">&lt;</button><button class="next-btn text-xs font-bold px-1 hover:text-eiger-orange cursor-pointer">&gt;</button></div></div>
+                                <div class="image-box absolute z-10 top-[185px] left-[200px] w-[190px] h-[375px] bg-white rounded-lg overflow-hidden border border-slate-300 flex items-center justify-center" data-idx="1"><div class="draggable-wrapper hidden absolute inset-0 flex items-center justify-center origin-center" style="transform: translate(0px, 0px) scale(1);"><img src="" class="draggable-img max-w-full max-h-full pointer-events-none"></div><div class="box-controls absolute bottom-1 right-1 flex gap-1 bg-white/80 rounded px-1 hidden z-20"><button class="prev-btn text-xs font-bold px-1 hover:text-eiger-orange cursor-pointer">&lt;</button><button class="next-btn text-xs font-bold px-1 hover:text-eiger-orange cursor-pointer">&gt;</button></div></div>
+                                <div class="image-box absolute z-10 top-[470px] left-[10px] w-[180px] h-[190px] bg-white rounded-lg overflow-hidden border border-slate-300 flex items-center justify-center" data-idx="2"><div class="draggable-wrapper hidden absolute inset-0 flex items-center justify-center origin-center" style="transform: translate(0px, 0px) scale(1);"><img src="" class="draggable-img max-w-full max-h-full pointer-events-none"></div><div class="box-controls absolute bottom-1 right-1 flex gap-1 bg-white/80 rounded px-1 hidden z-20"><button class="prev-btn text-xs font-bold px-1 hover:text-eiger-orange cursor-pointer">&lt;</button><button class="next-btn text-xs font-bold px-1 hover:text-eiger-orange cursor-pointer">&gt;</button></div></div>
+                                <div class="image-box absolute z-10 top-[575px] left-[200px] w-[190px] h-[85px] bg-white rounded-lg overflow-hidden border border-slate-300 flex items-center justify-center" data-idx="3"><div class="draggable-wrapper hidden absolute inset-0 flex items-center justify-center origin-center" style="transform: translate(0px, 0px) scale(1);"><img src="" class="draggable-img max-w-full max-h-full pointer-events-none"></div><div class="box-controls absolute bottom-1 right-1 flex gap-1 bg-white/80 rounded px-1 hidden z-20"><button class="prev-btn text-xs font-bold px-1 hover:text-eiger-orange cursor-pointer">&lt;</button><button class="next-btn text-xs font-bold px-1 hover:text-eiger-orange cursor-pointer">&gt;</button></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <div id="uploadPlaceholder" class="flex flex-col items-center justify-center h-[70vh] text-slate-400 px-6 text-center">
+            <i class="fa-solid fa-file-excel text-5xl lg:text-6xl mb-4 text-slate-300"></i>
+            <h2 class="text-lg lg:text-xl font-semibold text-slate-600">Silakan Upload Data DSR atau Tunggu Cloud Bin</h2>
+            <p class="text-xs lg:text-sm mt-2 max-w-md">Klik tombol Upload di pojok kanan atas Header.<br>Gunakan "By Bin" jika ingin mengecek stok artikel saja dan menyimpannya ke server.</p>
+        </div>
+    </div>
+
+    <!-- MODAL BARANG BELUM TERDISPLAY / DOUBLE DISPLAY / BIN DAMAGE -->
+    <div id="undisplayedModal" class="modal">
+        <div class="modal-content bg-white margin-auto p-0 max-w-5xl border rounded-xl shadow-lg mt-4 lg:mt-10 overflow-hidden flex flex-col h-[85vh] lg:h-[80vh]">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center p-3 lg:p-4 border-b bg-slate-50 gap-3">
+                <div class="flex-1 pr-0 lg:pr-4">
+                    <h3 class="text-sm lg:text-lg font-bold text-slate-800 leading-tight mb-1" id="modalUndisplayedTitle">Kategori (MC4): -</h3>
+                    <p class="text-[10px] lg:text-xs text-slate-500" id="modalUndisplayedDesc">Daftar SKU belum terdisplay.</p>
+                </div>
+                <div class="flex flex-wrap gap-2 w-full lg:w-auto items-center" id="modalUndisplayedActions">
+                    <!-- Tombol Export WA & Excel akan di-inject oleh JS -->
+                </div>
+            </div>
+            <div class="p-0 lg:p-4 overflow-auto flex-1 bg-white">
+                <table class="w-full text-sm text-left border-0 lg:border lg:border-slate-200">
+                    <thead id="tableUndisplayedHead" class="text-[10px] lg:text-xs text-slate-500 bg-slate-100 uppercase sticky top-0 z-10 shadow-sm cursor-pointer select-none">
+                        <!-- Head akan di-inject oleh JS tergantung mode -->
+                    </thead>
+                    <tbody id="tableUndisplayedBody" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALS EXPORT CHAT HARIAN & KOMULATIF -->
+    <div id="exportChatModal" class="modal">
+        <div class="modal-content bg-white margin-auto p-4 lg:p-6 max-w-md border rounded-xl shadow-lg mt-10">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-base lg:text-lg font-bold text-slate-800"><i class="fa-brands fa-whatsapp text-emerald-500 mr-2"></i>Export Pesan Sales</h3>
+                <span class="close font-bold text-slate-400 hover:text-slate-700 cursor-pointer text-xl" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm">
+                <p class="text-[10px] lg:text-xs text-slate-500 mb-2">Lengkapi data berikut untuk kalkulasi otomatis pesan WhatsApp:</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] lg:text-xs font-semibold text-slate-700 mb-1">Trafik Hari Ini:</label>
+                        <input type="number" id="inputTrafik" class="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:border-eiger-orange focus:outline-none" placeholder="Contoh: 18">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] lg:text-xs font-semibold text-slate-700 mb-1">Target Bulanan:</label>
+                        <input type="number" id="inputTarget" class="w-full border border-slate-300 rounded px-2 py-1 text-xs bg-slate-100 focus:outline-none" readonly>
+                    </div>
+                </div>
+            </div>
+            <div class="mb-4">
+                <label class="block text-[10px] lg:text-xs font-semibold text-slate-700 mb-1">Format Teks WhatsApp:</label>
+                <textarea id="chatTextOutput" rows="13" class="w-full p-2.5 border border-slate-300 rounded-lg text-[10px] lg:text-xs font-mono bg-slate-50 focus:outline-none" readonly></textarea>
+                <button onclick="copyChatText()" class="mt-2 w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-semibold text-[11px] lg:text-xs transition flex items-center justify-center gap-2 cursor-pointer">
+                    <i class="fa-regular fa-copy"></i> Salin Teks Pesan
+                </button>
+            </div>
+            <div class="flex justify-end pt-2 border-t">
+                <button onclick="closeModal()" class="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-semibold text-xs lg:text-sm transition cursor-pointer">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="cumulativeExportModal" class="modal">
+        <div class="modal-content bg-white p-4 lg:p-6 max-w-lg border rounded-xl shadow-lg mt-10">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-base lg:text-lg font-bold text-slate-800"><i class="fa-brands fa-whatsapp text-emerald-500 mr-2"></i>Export Komulatif</h3>
+                <span class="close font-bold text-slate-400 hover:text-slate-700 cursor-pointer text-xl" onclick="closeCumulativeModal()">&times;</span>
+            </div>
+            <p class="text-[10px] lg:text-xs text-slate-500 mb-2 lg:mb-3">Format pesan WhatsApp rekapitulasi penjualan komulatif:</p>
+            <textarea id="cumulativeTextOutput" rows="13" class="w-full p-2 lg:p-3 border border-slate-300 rounded-lg text-[10px] lg:text-xs font-mono bg-slate-50 focus:outline-none mb-4" readonly></textarea>
+            <div class="flex justify-end gap-2 lg:gap-3">
+                <button onclick="copyCumulativeText()" class="px-4 lg:px-5 py-2 lg:py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold text-[10px] lg:text-xs transition flex items-center gap-2 cursor-pointer">
+                    <i class="fa-regular fa-copy"></i> Salin Pesan
+                </button>
+                <button onclick="closeCumulativeModal()" class="px-4 lg:px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-semibold text-[10px] lg:text-xs transition cursor-pointer">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL SCREENSHOT -->
+    <div id="screenshotModal" class="modal">
+        <div class="modal-content bg-white p-4 lg:p-6 max-w-3xl text-center border rounded-xl shadow-lg mt-10">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-sm lg:text-base font-bold text-slate-800"><i class="fa-solid fa-camera text-eiger-orange mr-2"></i>Preview Screenshot Tabel</h3>
+                <span class="close font-bold text-slate-400 hover:text-slate-700 cursor-pointer text-xl" onclick="closeScreenshotModal()">&times;</span>
+            </div>
+            <p class="text-[10px] lg:text-xs text-slate-500 mb-4 hidden lg:block">💡 <strong>Tips:</strong> Klik kanan pada gambar di bawah lalu pilih <strong>"Copy Image"</strong> untuk langsung dipaste ke WhatsApp.</p>
+            <div class="border border-slate-300 rounded-lg p-2 lg:p-3 bg-slate-50 overflow-auto mb-4 max-h-[350px] lg:max-h-[450px] flex justify-center">
+                <img id="screenshotPreviewImg" src="" alt="Screenshot Preview" class="max-w-full rounded shadow-sm">
+            </div>
+            <div class="flex justify-center gap-3">
+                <button onclick="downloadScreenshotImage()" class="px-4 lg:px-5 py-2 lg:py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold text-[10px] lg:text-xs transition flex items-center gap-2 shadow-md cursor-pointer">
+                    <i class="fa-solid fa-download"></i> Download Gambar
+                </button>
+                <button onclick="closeScreenshotModal()" class="px-4 lg:px-5 py-2 lg:py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg font-semibold text-[10px] lg:text-xs transition cursor-pointer">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL EXPORT POSTER -->
+    <div id="exportPosterModal" class="modal">
+        <div class="modal-content bg-white p-4 lg:p-6 max-w-sm text-center border rounded-xl shadow-lg mt-4 mx-auto">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-sm lg:text-base font-bold text-slate-800"><i class="fa-solid fa-camera text-eiger-orange mr-2"></i>Preview Poster</h3>
+                <span class="close font-bold text-slate-400 hover:text-slate-700 cursor-pointer text-xl" onclick="document.getElementById('exportPosterModal').style.display='none'">&times;</span>
+            </div>
+            <p class="text-[9px] lg:text-[10px] text-slate-500 mb-2">Klik Download Gambar</p>
+            <div class="border border-slate-300 rounded-lg p-2 bg-slate-50 overflow-hidden mb-4 flex justify-center h-[350px] lg:h-[450px]">
+                <img id="posterResultImg" src="" alt="Poster Result" class="max-w-full max-h-full object-contain shadow-sm">
+            </div>
+            <button onclick="downloadPoster()" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold text-xs lg:text-sm transition flex items-center justify-center gap-2 shadow-md cursor-pointer">
+                <i class="fa-solid fa-download"></i> Download Image
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL GALLERY -->
+    <div id="galleryModal" class="modal" style="z-index: 2000;">
+        <div class="modal-content mx-auto w-full max-w-[420px] h-[70vh] lg:h-[80vh] max-h-[800px] bg-white border-none rounded-xl p-0 shadow-2xl flex flex-col relative overflow-hidden mt-[15vh] lg:mt-[5vh]">
+            <div class="p-3 lg:p-4 border-b border-slate-100 flex justify-between items-start bg-white z-10 shrink-0 shadow-sm">
+                <div class="text-left pr-4">
+                    <h3 class="text-sm lg:text-base font-bold text-slate-800 leading-tight" id="gallerySkuName">SKU NAME</h3>
+                    <div class="flex items-center gap-2 mt-1">
+                        <p class="text-[10px] lg:text-xs text-slate-500 font-mono" id="gallerySkuCode">SKU CODE</p>
+                        <span id="galleryPrice" class="text-xs font-bold text-emerald-600 font-sans bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 shadow-sm">Rp 0</span>
+                    </div>
+                    <p class="text-[10px] lg:text-xs font-bold text-eiger-orange mt-1"><i class="fa-solid fa-box-open mr-1"></i>Total Tersedia: <span id="galleryQty">0</span> pcs</p>
+                </div>
+                <span class="close font-bold text-slate-400 hover:text-slate-700 cursor-pointer text-2xl leading-none transition" onclick="closeGallery()">&times;</span>
+            </div>
+            <div class="flex-1 bg-slate-50 p-2 lg:p-4 overflow-hidden relative">
+                <div class="flex overflow-x-auto snap-x snap-mandatory gap-2 lg:gap-4 w-full h-full pb-2 hide-scroll" id="galleryScrollContainer"></div>
+            </div>
+            <div class="shrink-0 p-2 text-center text-[9px] lg:text-[10px] text-slate-400 bg-white border-t border-slate-100 font-semibold uppercase tracking-wider">
+                <i class="fa-solid fa-arrows-left-right mr-1"></i> Geser kiri/kanan untuk galeri foto
+            </div>
+        </div>
+    </div>
+
+    <!-- Script Logic -->
+    <script>
+        Chart.register(ChartDataLabels);
+
+        // ==== FIREBASE CONFIG ====
+        const firebaseConfig = {
+            apiKey: "AIzaSyBBmaQnUAP9eGQXekCkyCi9t8YFBaXOtDY",
+            authDomain: "dsr-analytics.firebaseapp.com",
+            projectId: "dsr-analytics",
+            storageBucket: "dsr-analytics.firebasestorage.app",
+            messagingSenderId: "1005867382875",
+            appId: "1:1005867382875:web:d88738de96a13a040aa77e",
+            measurementId: "G-4NYR94J807"
+        };
+        let db = null;
+        if (firebaseConfig.apiKey) { firebase.initializeApp(firebaseConfig); db = firebase.firestore(); }
+
+        // ==== GLOBAL VARIABLES ====
+        const DEFAULT_SH_PASSWORD = "admin";
+        let currentRole = ''; 
+        let appTargets = { gross: 333000000, ea: 3.0, ws: 7.0, tt: 0.0, shares: {} };
+        
+        let rawData = [];
+        let cleanData = [];
+        let holidayDates = new Set();
+        let currentChartTime = null;
+        let sortState = { mc3: { col: 1, asc: false }, mc4: { col: 2, asc: false }, ra: { col: 5, asc: false } };
+        let compareSortState = { col: 4, asc: false };
+        let activeScreenshotDataUrl = null;
+
+        let rawBinData = [];
+        let groupedBinData = [];
+        let masterGambarMap = {}; 
+        let masterArtikelMap = {}; 
+        let lastUpdateGambarStr = "";
+
+        // UNDISPLAYED / DOUBLE DISPLAY / DAMAGE FEATURE VARIABLES
+        let globalUndisplayedData = [];
+        let globalDoubleDisplayData = [];
+        let globalDamageData = []; 
+        let activeUndisplayedMC4 = "";
+        let activeDisplayMode = "undisplayed";
+        let activeDisplayParentFilter = "ALL"; // Filter Parent (MC Lvl 3)
+        let sortUndisplayedState = { col: 0, asc: true };
+
+        // ==== UTILITIES ====
+        const formatRp = (num) => { if (isNaN(num) || num === null || !isFinite(num)) num = 0; return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num); };
+        const formatNum = (num) => { if (isNaN(num) || num === null || !isFinite(num)) num = 0; return new Intl.NumberFormat('id-ID').format(num); };
+        const formatDec = (num) => { if (isNaN(num) || num === null || !isFinite(num)) num = 0; return new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num); };
+        const safePriceNum = (val) => { if (typeof val === 'number') return val; if (!val) return 0; let s = String(val).replace(/[,\.]/g, ''); return parseFloat(s) || 0; };
+        const safeNum = (val) => { if (typeof val === 'number') return val; if (!val) return 0; let s = String(val).replace(/,/g, ''); return parseFloat(s) || 0; };
+        const formatTanggalWaktu = (ms) => { const d = new Date(ms); const dd = String(d.getDate()).padStart(2, '0'); const mm = String(d.getMonth() + 1).padStart(2, '0'); const yy = String(d.getFullYear()).slice(-2); const hh = String(d.getHours()).padStart(2, '0'); const mns = String(d.getMinutes()).padStart(2, '0'); return `${dd}-${mm}-${yy}, ${hh}:${mns}`; };
+
+        async function fetchIndonesianHolidays() { try { const year = new Date().getFullYear(); const response = await fetch(`https://api-harilibur.vercel.app/api?year=${year}`); if (response.ok) { const holidays = await response.json(); holidays.forEach(h => { if (h.is_national_holiday) holidayDates.add(h.holiday_date); }); } } catch (e) {} }
+        fetchIndonesianHolidays();
+
+        // ==== FIREBASE MASTER DATA LOADERS ====
+        function loadMasterDataFromFirebase() {
+            if (!db) return;
+            document.getElementById('loadingGambarIcon').style.display = 'inline-block';
+            document.getElementById('clockGambarIcon').style.display = 'none';
+
+            // 1. Fetch Master Gambar
+            const pGambar = db.collection("settings").doc("master_gambar_meta").get().then(async (doc) => {
+                if (doc.exists) {
+                    const meta = doc.data(); lastUpdateGambarStr = meta.lastUpdate || ""; masterGambarMap = {}; 
+                    const fetchPromises = []; for (let i = 0; i < (meta.chunks || 0); i++) fetchPromises.push(db.collection("settings").doc(`master_gambar_data_${i}`).get());
+                    try { const chunkDocs = await Promise.all(fetchPromises); chunkDocs.forEach(chunkDoc => { if (chunkDoc.exists && chunkDoc.data().map) Object.assign(masterGambarMap, chunkDoc.data().map); }); if (Object.keys(masterGambarMap).length > 0 && currentRole === 'SH') document.getElementById('btnGambarText').innerHTML = 'M. Gambar (Aktif)'; } catch(e) {}
+                }
+            });
+
+            // 2. Fetch Master Artikel
+            const pArtikel = db.collection("settings").doc("master_artikel_meta").get().then(async (doc) => {
+                if (doc.exists) {
+                    masterArtikelMap = {}; const fetchPromises = []; for (let i = 0; i < (doc.data().chunks || 0); i++) fetchPromises.push(db.collection("settings").doc(`master_artikel_data_${i}`).get());
+                    try { const chunkDocs = await Promise.all(fetchPromises); chunkDocs.forEach(chunkDoc => { if (chunkDoc.exists && chunkDoc.data().map) Object.assign(masterArtikelMap, chunkDoc.data().map); }); if (Object.keys(masterArtikelMap).length > 0 && currentRole === 'SH') document.getElementById('btnArtikelText').innerHTML = 'M. Artikel (Aktif)'; } catch(e) {}
+                }
+            });
+
+            // 3. Fetch By Bin (Reset at 00:00 WIB / Local Time)
+            const pBin = db.collection("settings").doc("bin_data_meta").get().then(async (doc) => {
+                if (doc.exists) {
+                    const meta = doc.data(); 
+                    const now = new Date();
+                    const uploadDate = new Date(meta.timestamp);
+                    
+                    // Cek hari yang sama (Bila sudah beda hari/lewat 00:00, data expired)
+                    const isSameDay = (now.getFullYear() === uploadDate.getFullYear() && 
+                                       now.getMonth() === uploadDate.getMonth() && 
+                                       now.getDate() === uploadDate.getDate());
+
+                    if (isSameDay) {
+                        const fetchPromises = [];
+                        for (let i = 0; i < (meta.chunks || 0); i++) { fetchPromises.push(db.collection("settings").doc(`bin_data_chunk_${i}`).get()); }
+                        try {
+                            const chunkDocs = await Promise.all(fetchPromises); let restoredData = [];
+                            chunkDocs.forEach(chunkDoc => {
+                                if (chunkDoc.exists && chunkDoc.data().data) {
+                                    const chunkArr = chunkDoc.data().data.map(x => ({
+                                        'SKU Code': x.s, 'SKU Name': x.n, 'Generic Code': x.g, 'Bin Code': x.b, 'MC LV 2': x.m2, 'MC LV 3': x.m3 || '', 'MC LV 4': x.m4, 'Total Qty': x.q
+                                    }));
+                                    restoredData = restoredData.concat(chunkArr);
+                                }
+                            });
+                            if (restoredData.length > 0) {
+                                rawBinData = restoredData;
+                                processBinData(false); // Tidak trigger re-upload
+                                document.getElementById('btnBinText').innerHTML = 'Bin (Cloud)';
+                                document.getElementById('lastUploadBinTime').innerText = meta.formattedTime || formatTanggalWaktu(meta.timestamp);
+                                document.getElementById('uploadPlaceholder').classList.add('hidden');
+                                document.getElementById('mainDashboard').classList.remove('hidden');
+                                document.getElementById('binUploadPlaceholder').classList.add('hidden');
+                                document.getElementById('binFilterSection').classList.remove('hidden');
+                                document.getElementById('binTableContainer').classList.remove('hidden');
+                            }
+                        } catch(e) {}
+                    } else {
+                        document.getElementById('lastUploadBinTime').innerText = "Expired (Reset 00:00)";
+                        document.getElementById('lastUploadBinTime').classList.add('text-red-500');
+                        document.getElementById('lastUploadBinTime').classList.remove('text-eiger-orange');
+                    }
+                }
+            });
+
+            Promise.all([pGambar, pArtikel, pBin]).finally(() => {
+                document.getElementById('loadingGambarIcon').style.display = 'none'; document.getElementById('clockGambarIcon').style.display = 'inline-block'; updateLastUpdateDisplay();
+                if(groupedBinData.length > 0) renderBinTable();
+                if(cleanData.length > 0 && groupedBinData.length > 0) renderCompareTable();
+            });
+        }
+        function updateLastUpdateDisplay() { const container = document.getElementById('lastUpdateContainer'); if (lastUpdateGambarStr) { document.getElementById('lastUpdateText').innerText = `Update Master: ${lastUpdateGambarStr}`; container.classList.remove('hidden'); } else { container.classList.add('hidden'); } }
+
+        // ==== LOGIN SYSTEM ====
+        function showPasswordPrompt() { document.getElementById('roleSelection').classList.add('hidden'); document.getElementById('passwordSection').classList.remove('hidden'); }
+        function cancelLogin() { document.getElementById('roleSelection').classList.remove('hidden'); document.getElementById('passwordSection').classList.add('hidden'); }
+        function loginAsSH() { if(document.getElementById('shPassword').value === DEFAULT_SH_PASSWORD) { currentRole = 'SH'; finalizeLogin('Store Head'); enableSettingsPanel(); document.getElementById('uploadAdminContainer').classList.remove('hidden'); } else alert("Password Salah!"); }
+        function loginAsRA() { currentRole = 'RA'; finalizeLogin('Retail Assistant'); disableSettingsPanel(); document.getElementById('uploadAdminContainer').classList.add('hidden'); }
+        function finalizeLogin(roleName) {
+            document.getElementById('loginOverlay').classList.add('hidden'); document.getElementById('appContainer').classList.remove('hidden'); document.body.classList.remove('overflow-hidden');
+            document.getElementById('badgeRole').innerText = `[ ${roleName} ]`; 
+            document.getElementById('badgeRole').className = currentRole === 'SH' 
+                ? "ml-1 px-1.5 py-0.5 bg-slate-800 text-white rounded text-[8px] md:text-[9px] uppercase font-bold tracking-wider inline-block" 
+                : "ml-1 px-1.5 py-0.5 bg-eiger-orange text-white rounded text-[8px] md:text-[9px] uppercase font-bold tracking-wider inline-block";
+            fetchTargetsFromFirebase(); loadMasterDataFromFirebase();
+        }
+        function enableSettingsPanel() { document.querySelectorAll('.target-input').forEach(el => { el.disabled = false; el.classList.remove('input-disabled'); }); document.getElementById('btnSaveTarget').classList.remove('hidden'); document.getElementById('badgeCloud').classList.add('hidden'); }
+        function disableSettingsPanel() { document.querySelectorAll('.target-input').forEach(el => { el.disabled = true; el.classList.add('input-disabled'); }); document.getElementById('btnSaveTarget').classList.add('hidden'); document.getElementById('badgeCloud').classList.remove('hidden'); }
+
+        // ==== SETTINGS & TARGETS ====
+        function fetchTargetsFromFirebase() {
+            if (!db) { updateInputsFromState(); return; }
+            document.getElementById('settingsLoading').classList.remove('hidden');
+            db.collection("settings").doc("target_bulanan").get().then((doc) => {
+                if (doc.exists) appTargets = { gross: 333000000, ea: 3.0, ws: 7.0, tt: 0.0, shares: {}, ...doc.data() }; else if (currentRole === 'SH') db.collection("settings").doc("target_bulanan").set(appTargets);
+                updateInputsFromState(); document.getElementById('settingsLoading').classList.add('hidden');
+            }).catch(() => { updateInputsFromState(); document.getElementById('settingsLoading').classList.add('hidden'); });
+        }
+        function saveTargetsToFirebase() {
+            if (currentRole !== 'SH') return;
+            let customShares = {}; document.querySelectorAll('.ra-share-input').forEach(input => { customShares[input.getAttribute('data-ra')] = parseFloat(input.value) || 0; });
+            const newTargets = { gross: parseFloat(document.getElementById('inputTargetGross').value) || 0, ea: parseFloat(document.getElementById('inputPctEA').value) || 0, ws: parseFloat(document.getElementById('inputPctWS').value) || 0, tt: parseFloat(document.getElementById('inputPctTT').value) || 0, shares: customShares };
+            if (!db) { appTargets = newTargets; updateDashboardHarian(); if(window.appRAData) renderTaggingTable(); alert("Disimpan secara lokal!"); return; }
+            const btn = document.getElementById('btnSaveTarget'); btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Menyimpan...`; btn.disabled = true;
+            db.collection("settings").doc("target_bulanan").set(newTargets).then(() => { appTargets = newTargets; alert("Target Bulanan & Share RA berhasil di-update ke Cloud!"); updateDashboardHarian(); if(window.appRAData) renderTaggingTable(); }).finally(() => { btn.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Simpan`; btn.disabled = false; });
+        }
+        function updateInputsFromState() { document.getElementById('inputTargetGross').value = appTargets.gross || 0; document.getElementById('inputPctEA').value = appTargets.ea || 0; document.getElementById('inputPctWS').value = appTargets.ws || 0; document.getElementById('inputPctTT').value = appTargets.tt || 0; document.getElementById('inputTarget').value = appTargets.gross || 0; updateDashboardHarian(); if(window.appRAData) renderTaggingTable(); }
+        document.querySelectorAll('.target-input').forEach(el => { el.addEventListener('input', () => { if (currentRole === 'SH' && window.appRAData) renderTaggingTable(); }); });
+
+        function switchTab(tabId, btnElement) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden')); document.getElementById(tabId).classList.remove('hidden');
+            document.querySelectorAll('.bg-white.border-b button').forEach(el => { el.classList.remove('tab-active'); el.classList.add('tab-inactive'); }); btnElement.classList.add('tab-active'); btnElement.classList.remove('tab-inactive');
+        }
+
+        // ==== UPLOAD MASTER ADMIN ====
+        document.getElementById('fileUploadGambar').addEventListener('change', (e) => {
+            if (currentRole !== 'SH') return;
+            const file = e.target.files[0]; if (!file) return;
+            const btnSpan = document.getElementById('btnGambarText'); const originalContent = btnSpan.innerHTML; btnSpan.innerHTML = 'Membaca...';
+            const reader = new FileReader(); reader.onerror = () => { alert("Gagal membaca file."); btnSpan.innerHTML = originalContent; };
+            reader.onload = (evt) => {
+                try {
+                    const sheet = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' }).Sheets[XLSX.read(new Uint8Array(evt.target.result), { type: 'array' }).SheetNames[0]];
+                    const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1 }); let headerIdx = 0; let rawDateVal = null;
+                    for(let i=0; i < aoa.length; i++) { if(aoa[i]) { if(!rawDateVal) { for(let cell of aoa[i]) { if(cell && (typeof cell === 'string' && (cell.includes('2026') || cell.includes('2025') || cell.includes('-')))) rawDateVal = cell; } } if(aoa[i].includes('Seller SKU')) { headerIdx = i; break; } } }
+                    let dateFormatted = ""; if (rawDateVal) { try { let dObj = new Date(rawDateVal); if(!isNaN(dObj.getTime())) { const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des']; dateFormatted = `${dObj.getDate()} ${months[dObj.getMonth()]} ${dObj.getFullYear()}`; } else dateFormatted = String(rawDateVal); } catch(e) { dateFormatted = String(rawDateVal); } }
+                    if(!dateFormatted) { const now = new Date(); const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des']; dateFormatted = `${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`; }
+                    let newMasterMap = {};
+                    XLSX.utils.sheet_to_json(sheet, { range: headerIdx, defval: "" }).forEach(row => { const sku = String(row['Seller SKU'] || '').trim(); if(sku) { let images = []; for(let i=1; i<=20; i++) { const imgUrl = row[`Gambar${i}`]; if(imgUrl && typeof imgUrl === 'string' && imgUrl.startsWith('http')) images.push(imgUrl.trim()); } if(images.length > 0) newMasterMap[sku] = images; } });
+                    masterGambarMap = newMasterMap; lastUpdateGambarStr = dateFormatted;
+                    if (db) {
+                        btnSpan.innerHTML = 'Syncing...'; const skuKeys = Object.keys(masterGambarMap); const chunkObjs = [];
+                        for (let i = 0; i < skuKeys.length; i += 250) { let tempObj = {}; skuKeys.slice(i, i + 250).forEach(k => { tempObj[k] = masterGambarMap[k]; }); chunkObjs.push(tempObj); }
+                        const promises = [db.collection("settings").doc("master_gambar_meta").set({ chunks: chunkObjs.length, lastUpdate: lastUpdateGambarStr })]; chunkObjs.forEach((obj, idx) => { promises.push(db.collection("settings").doc(`master_gambar_data_${idx}`).set({ map: obj })); });
+                        Promise.all(promises).then(() => { alert(`Upload ${skuKeys.length} Gambar Cloud Sukses!`); btnSpan.innerHTML = 'M. Gambar (Aktif)'; updateLastUpdateDisplay(); if(groupedBinData.length > 0) renderBinTable(); }).catch(err => { alert("Error: " + err.message); btnSpan.innerHTML = originalContent; });
+                    } else { btnSpan.innerHTML = 'M. Gambar (Aktif)'; updateLastUpdateDisplay(); if(groupedBinData.length > 0) renderBinTable(); }
+                } catch (err) { alert("Format Invalid: " + err.message); btnSpan.innerHTML = originalContent; }
+            }; reader.readAsArrayBuffer(file);
+        });
+
+        document.getElementById('fileUploadArtikel').addEventListener('change', (e) => {
+            if (currentRole !== 'SH') return;
+            const file = e.target.files[0]; if (!file) return;
+            const btnSpan = document.getElementById('btnArtikelText'); const originalContent = btnSpan.innerHTML; btnSpan.innerHTML = 'Membaca...';
+            const reader = new FileReader(); reader.onerror = () => { alert("Gagal membaca file."); btnSpan.innerHTML = originalContent; };
+            reader.onload = (evt) => {
+                try {
+                    let newArtikelMap = {}; const workbook = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' }); const sheet = workbook.Sheets[workbook.SheetNames[0]]; const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                    let headerIdx = 0; for (let i = 0; i < Math.min(10, rawData.length); i++) { if (rawData[i] && rawData[i].some(cell => typeof cell === 'string' && cell.toLowerCase().includes('article'))) { headerIdx = i; break; } }
+                    XLSX.utils.sheet_to_json(sheet, { range: headerIdx, defval: "" }).forEach(row => {
+                        let sku = "", name = "", price = 0;
+                        for (const key in row) {
+                            const k = key.toLowerCase().trim();
+                            if (k === 'article' || k === 'sku' || k === 'item code') sku = String(row[key]).trim(); else if (k.includes('article') && !k.includes('old') && !k.includes('desc') && !sku) sku = String(row[key]).trim();
+                            if (k === 'article description' || k === 'product name') name = String(row[key]).trim(); else if (k.includes('desc') && !name) name = String(row[key]).trim();
+                            if (k === 'loc amount' || k === 'price' || k === 'harga' || k.includes('amount')) { let val = row[key]; if (typeof val === 'number') price = val; else if (val) price = safePriceNum(val); }
+                        }
+                        if (sku) newArtikelMap[sku] = { price: price, name: name, genericCode: sku.substring(0, 9) };
+                    });
+                    masterArtikelMap = newArtikelMap;
+                    if (db) {
+                        btnSpan.innerHTML = 'Syncing...'; const skuKeys = Object.keys(masterArtikelMap); const chunkObjs = [];
+                        for (let i = 0; i < skuKeys.length; i += 500) { let tempObj = {}; skuKeys.slice(i, i + 500).forEach(k => { tempObj[k] = masterArtikelMap[k]; }); chunkObjs.push(tempObj); }
+                        const promises = [db.collection("settings").doc("master_artikel_meta").set({ chunks: chunkObjs.length })]; chunkObjs.forEach((obj, idx) => { promises.push(db.collection("settings").doc(`master_artikel_data_${idx}`).set({ map: obj })); });
+                        Promise.all(promises).then(() => { alert(`Upload Harga ${skuKeys.length} Artikel Cloud Sukses!`); btnSpan.innerHTML = 'M. Artikel (Aktif)'; if(groupedBinData.length > 0) renderBinTable(); if(cleanData.length > 0 && groupedBinData.length > 0) renderCompareTable(); }).catch(err => { alert("Error: " + err.message); btnSpan.innerHTML = originalContent; });
+                    } else { btnSpan.innerHTML = 'M. Artikel (Aktif)'; if(groupedBinData.length > 0) renderBinTable(); if(cleanData.length > 0 && groupedBinData.length > 0) renderCompareTable(); }
+                } catch (err) { alert("Format Invalid: " + err.message); btnSpan.innerHTML = originalContent; }
+            }; reader.readAsArrayBuffer(file);
+        });
+
+        // ==== UPLOAD & PROCESS DSR ====
+        document.getElementById('fileUpload').addEventListener('change', (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const workbook = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' }); const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const locCell = worksheet['A3']; document.getElementById('metaLocation').innerText = locCell ? String(locCell.v) : '-';
+                    const fCell = worksheet['A4']; const tCell = worksheet['A5']; document.getElementById('metaDateRange').innerText = `${fCell ? String(fCell.v).replace('From Date: ', '') : ''} s/d ${tCell ? String(tCell.v).replace('To Date: ', '') : ''}`;
+                    const aoa = XLSX.utils.sheet_to_json(worksheet, { header: 1 }); let headerRow = 6;
+                    for (let i = 0; i < Math.min(20, aoa.length); i++) { if (aoa[i] && aoa[i].length > 5) { const rowStr = aoa[i].join(' ').toLowerCase(); if ((rowStr.includes('sku') || rowStr.includes('article')) && (rowStr.includes('invoice') || rowStr.includes('order'))) { headerRow = i; break; } } }
+                    rawData = XLSX.utils.sheet_to_json(worksheet, { range: headerRow, defval: "" });
+                    
+                    document.getElementById('uploadPlaceholder').classList.add('hidden'); 
+                    document.getElementById('mainDashboard').classList.remove('hidden');
+                    document.getElementById('globalMetaData').classList.remove('hidden'); 
+
+                    processData();
+                } catch (err) { alert("Format file Excel tidak valid: " + err.message); }
+            }; reader.readAsArrayBuffer(file);
+        });
+        document.getElementById('billStatusFilter').addEventListener('change', processData);
+        document.getElementById('dateSelector').addEventListener('change', updateDashboardHarian);
+        document.getElementById('searchItem').addEventListener('input', renderTableItems);
+        document.getElementById('btnCumulative').addEventListener('click', () => { document.getElementById('dateSelector').value = "ALL"; updateDashboardHarian(); });
+
+        function extractDateFromInvoice(invoiceNo) { if (!invoiceNo || typeof invoiceNo !== 'string') return null; const match = invoiceNo.match(/-(\d{6})(-|$)/); if (match) { const d = match[1]; return `20${d.substring(0,2)}-${d.substring(2,4)}-${d.substring(4,6)}`; } return null; }
+        function extractHour(orderDateStr) { if (!orderDateStr || typeof orderDateStr !== 'string') return -1; try { return parseInt(orderDateStr.split(' ')[1].split(':')[0], 10); } catch (e) { return -1; } }
+
+        function processData() {
+            const statusFilter = document.getElementById('billStatusFilter').value; cleanData = [];
+            rawData.forEach(row => {
+                const invNo = String(row['Invoice No'] || row['Order No'] || row['Receipt No'] || '').trim();
+                let orderDate = ''; const rawDateVal = row['Order Date'] || row['Date'] || row['Tanggal'] || '';
+                if (typeof rawDateVal === 'number') { const dObj = new Date(Math.round((rawDateVal - 25569) * 86400 * 1000)); dObj.setHours(dObj.getHours() + Math.round(dObj.getTimezoneOffset() / 60) + 7); orderDate = dObj.toISOString().replace('T', ' ').substring(0, 19); } else { orderDate = String(rawDateVal).trim(); }
+                if (orderDate.toUpperCase() === 'TOTAL' || invNo.toUpperCase() === 'TOTAL' || !invNo) return;
+                const rawSku = String(row['SKU Code'] || row['Article'] || row['SKU'] || row['Item Code'] || '').replace(/^['"\s]+/, '').trim();
+                if (!rawSku.startsWith('91')) return;
+                const skuName = String(row['Sku Name'] || row['Item Name'] || row['Product Name'] || '').toUpperCase();
+                if (rawSku.toUpperCase().includes('VOUCHER') || skuName.includes('VOUCHER')) return;
+                const billStatus = String(row['Bill Status'] || row['Status'] || '').toLowerCase(); const isReturn = billStatus.includes('return');
+                if (statusFilter === 'ignore_return' && isReturn) return;
+                let multiplier = (statusFilter === 'all' && isReturn) ? -1 : 1;
+                let cleanDate = extractDateFromInvoice(invNo);
+                if (!cleanDate && orderDate) { const datePart = orderDate.split(' ')[0]; if (datePart.includes('/')) { const p = datePart.split('/'); if (p.length === 3) cleanDate = p[2].length === 4 ? (parseInt(p[0]) > 12 ? `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}` : `${p[2]}-${p[0].padStart(2,'0')}-${p[1].padStart(2,'0')}`) : `20${p[2]}-${p[0].padStart(2,'0')}-${p[1].padStart(2,'0')}`; } else if (datePart.includes('-')) cleanDate = datePart; }
+                
+                row._CleanDate = cleanDate || '2000-01-01'; row._Hour = extractHour(orderDate); 
+                row._Gross = safeNum(row['Gross Amount'] || row['Gross Sales'] || row['Gross'] || row['Total Gross']) * multiplier;
+                row._Net = safeNum(row['Net Amount'] || row['Net Sales'] || row['Net'] || row['Netto']) * multiplier;
+                row._Discount = safeNum(row['Discount Amount'] || row['Discount'] || row['Diskon']) * multiplier;
+                row._Qty = safeNum(row['Quantity'] || row['Qty']) * multiplier;
+                row._PromoName = String(row['Promotion Name'] || row['Promo'] || '');
+                row._TransType = String(row['Transaction Type'] || row['Type'] || '').trim();
+                row._CustName = String(row['Customer Name'] || row['Member Name'] || '').trim();
+                row['Invoice No'] = invNo; row['Order Date'] = orderDate; row['SKU Code'] = rawSku; row['Sku Name'] = skuName;
+                row['Category Lv.4'] = String(row['Category Lv.4'] || row['MC LV 4'] || row['MC 4'] || 'Uncategorized').trim();
+                row['Category Lv.3'] = String(row['Category Lv.3'] || row['MC LV 3'] || row['MC 3'] || 'Uncategorized').trim();
+                row['Sales Person'] = String(row['Sales Person'] || row['RA'] || row['Cashier'] || 'Unknown').trim();
+                cleanData.push(row);
+            });
+
+            document.getElementById('metaRows').innerText = formatNum(cleanData.length);
+            const uniqueDates = [...new Set(cleanData.map(d => d._CleanDate))].sort();
+            const dateSel = document.getElementById('dateSelector'); dateSel.innerHTML = '<option value="ALL">Semua Tanggal (Komulatif)</option>';
+            uniqueDates.forEach(d => { let opt = document.createElement('option'); opt.value = d; const dObj = new Date(d); opt.text = isNaN(dObj.getTime()) ? `Format Tanggal Unik (${d})` : `${dObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} (${d})`; dateSel.appendChild(opt); });
+            if (uniqueDates.length > 0) dateSel.value = uniqueDates[uniqueDates.length - 1];
+
+            let tabDateText = "Tanggal";
+            if (uniqueDates.length > 0) { const latestDate = new Date(uniqueDates[uniqueDates.length - 1]); if(!isNaN(latestDate.getTime())) { tabDateText = `${latestDate.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'][latestDate.getMonth()]}`; } }
+            document.querySelector('button[onclick*="tab-harian"]').innerHTML = `Ini / Per Tanggal <span id="tabDateBadge" class="ml-1 bg-orange-100 text-eiger-orange px-2 py-0.5 rounded text-xs hidden">${tabDateText}</span>`;
+
+            renderDailyBreakdownTable(uniqueDates); renderAnalysisTables(); updateDashboardHarian();
+            if(groupedBinData.length > 0) renderCompareTable();
+            if(document.getElementById('tab-cekbarang').classList.contains('block') === false && document.getElementById('tab-poster').classList.contains('block') === false) { switchTab('tab-harian', document.querySelector('button[onclick*="tab-harian"]')); }
+        }
+
+        function renderDailyBreakdownTable(dates) {
+            const tbody = document.getElementById('tableDailyBody'); tbody.innerHTML = ''; let komulatifGross = 0; const daysNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']; const monthsNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
+            dates.forEach(d => {
+                const dayData = cleanData.filter(x => x._CleanDate === d); const gross = dayData.reduce((s, x) => s + x._Gross, 0), net = dayData.reduce((s, x) => s + x._Net, 0), qty = dayData.reduce((s, x) => s + x._Qty, 0); const trxCount = new Set(dayData.map(x => x['Invoice No'])).size; komulatifGross += gross;
+                const dateObj = new Date(d); let displayDate = d; let dayClass = "text-slate-400 font-normal";
+                if (!isNaN(dateObj.getTime())) { const dayOfWeek = dateObj.getDay(); const isHoliday = holidayDates.has(d); dayClass = (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0 || isHoliday) ? "text-red-600 font-bold" : "text-slate-400 font-normal"; displayDate = `${dateObj.getDate().toString().padStart(2, '0')} ${monthsNames[dateObj.getMonth()]} ${dateObj.getFullYear()} <span class="text-[10px] lg:text-[11px] ml-1 ${dayClass}">(${daysNames[dayOfWeek]}${isHoliday ? ' Libur' : ''})</span>`; }
+                tbody.innerHTML += `<tr class="hover:bg-slate-50 transition cursor-pointer border-b border-slate-100" onclick="document.getElementById('dateSelector').value='${d}'; updateDashboardHarian(); switchTab('tab-harian', document.querySelector('button[onclick*=\\'tab-harian\\']'))">
+                        <td class="px-4 py-3 font-semibold text-slate-800">${displayDate}</td><td class="px-4 py-3 text-right">${formatRp(gross)}</td><td class="px-4 py-3 text-right font-semibold">${formatRp(net)}</td><td class="px-4 py-3 text-center">${formatNum(qty)}</td><td class="px-4 py-3 text-center font-bold text-sky-600">${formatRp(trxCount > 0 ? (gross / trxCount) : 0)}</td><td class="px-4 py-3 text-center font-bold text-amber-600">${formatDec(trxCount > 0 ? (qty / trxCount) : 0)}</td><td class="px-4 py-3 text-center">${formatNum(trxCount)}</td><td class="px-4 py-3 text-right font-bold text-emerald-600 bg-emerald-50/30">${formatRp(komulatifGross)}</td></tr>`;
+            });
+        }
+
+        function renderAnalysisTables() {
+            const allRA = [...new Set(cleanData.filter(x => x['Sales Person']).map(x => x['Sales Person']))];
+            const wsTotalGross = cleanData.filter(x => x._TransType.toLowerCase().includes('wholesale')).reduce((s, x) => s + x._Gross, 0); const ttTotalGross = cleanData.filter(x => x._TransType.toLowerCase().includes('tour') || x._TransType.toLowerCase().includes('travel')).reduce((s, x) => s + x._Gross, 0);
+            const wsSplitPerRA = allRA.length > 0 ? (wsTotalGross / allRA.length) : 0; const ttSplitPerRA = allRA.length > 0 ? (ttTotalGross / allRA.length) : 0;
+            const totalActualGross = cleanData.reduce((s, x) => s + x._Gross, 0);
+
+            let raData = [];
+            allRA.forEach(raName => {
+                const raItems = cleanData.filter(x => x['Sales Person'] === raName); const trxs = new Set(raItems.map(x => x['Invoice No'])); const qty = raItems.reduce((s, x) => s + x._Qty, 0);
+                const eaActualRA = raItems.filter(x => x._TransType.toLowerCase().includes('endless') || x._TransType.toLowerCase().includes('aisle')).reduce((s, x) => s + x._Gross, 0);
+                const baseGross = raItems.filter(x => { const t = x._TransType.toLowerCase(); return !t.includes('wholesale') && !t.includes('tour') && !t.includes('travel') && !t.includes('endless') && !t.includes('aisle'); }).reduce((s, x) => s + x._Gross, 0);
+                const finalGross = baseGross + eaActualRA + wsSplitPerRA + ttSplitPerRA;
+                raData.push({ name: raName, trxs: trxs.size, qty: qty, upt: trxs.size > 0 ? (qty / trxs.size) : 0, bs: trxs.size > 0 ? (finalGross / trxs.size) : 0, gross: finalGross, wiActual: baseGross, eaActual: eaActualRA, wsActual: wsSplitPerRA, ttActual: ttSplitPerRA });
+            });
+            window.appRAData = raData;
+
+            let mc3Map = {}, mc4Map = {}, promoMap = {};
+            cleanData.forEach(x => {
+                const lv3 = x['Category Lv.3'], lv4 = x['Category Lv.4'];
+                if(!mc3Map[lv3]) mc3Map[lv3] = { cat: lv3, gross: 0, qty: 0 }; mc3Map[lv3].gross += x._Gross; mc3Map[lv3].qty += x._Qty;
+                const key4 = lv3 + '|' + lv4; if(!mc4Map[key4]) mc4Map[key4] = { lv4: lv4, lv3: lv3, gross: 0, qty: 0 }; mc4Map[key4].gross += x._Gross; mc4Map[key4].qty += x._Qty;
+            });
+            window.appMC3Data = Object.values(mc3Map); window.appMC4Data = Object.values(mc4Map);
+
+            let hourlyBlocks = []; for (let i = 8; i <= 22; i++) hourlyBlocks.push(`${String(i).padStart(2, '0')}:00`);
+            let timeTrxCountMap = {}; hourlyBlocks.forEach(b => timeTrxCountMap[b] = new Set());
+            cleanData.forEach(x => { if (x._Hour >= 8 && x._Hour <= 22) { const blockStr = `${String(x._Hour).padStart(2, '0')}:00`; if (x['Invoice No']) timeTrxCountMap[blockStr].add(x['Invoice No']); } });
+            const chartDataArray = hourlyBlocks.map(b => timeTrxCountMap[b].size);
+            if(currentChartTime) currentChartTime.destroy();
+            currentChartTime = new Chart(document.getElementById('chartTime').getContext('2d'), { type: 'bar', data: { labels: hourlyBlocks, datasets: [{ label: 'Jumlah Trx', data: chartDataArray, backgroundColor: '#ff6b00', borderRadius: 4, barPercentage: 0.7 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, datalabels: { color: '#ffffff', anchor: 'center', align: 'center', font: { weight: 'bold', size: 11 }, formatter: function(value) { return value > 0 ? value : ''; } } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } } } });
+            
+            applySort('mc3'); applySort('mc4'); applySort('ra'); renderTaggingTable();
+        }
+
+        function renderCompareTable() {
+            if(cleanData.length === 0 || groupedBinData.length === 0) return;
+            let mc4Sales = {}; cleanData.forEach(x => { const mc4 = x['Category Lv.4']; if(!mc4Sales[mc4]) mc4Sales[mc4] = { qty: 0, gross: 0 }; mc4Sales[mc4].qty += x._Qty; mc4Sales[mc4].gross += x._Gross; });
+            let mc4Bin = {}; groupedBinData.forEach(x => { const mc4 = x.mc4; if(!mc4Bin[mc4]) mc4Bin[mc4] = { qty: 0, val: 0 }; mc4Bin[mc4].qty += x.totalQty; const articleData = masterArtikelMap[x.skuCode] || masterArtikelMap[x.skuCode.trim()] || Object.values(masterArtikelMap).find(a => a.genericCode === x.genCode); const price = articleData ? articleData.price : 0; mc4Bin[mc4].val += (x.totalQty * price); });
+            const allMc4 = [...new Set([...Object.keys(mc4Sales), ...Object.keys(mc4Bin)])];
+            window.appCompareData = allMc4.map(mc4 => { const bQty = mc4Bin[mc4] ? mc4Bin[mc4].qty : 0, sQty = mc4Sales[mc4] ? mc4Sales[mc4].qty : 0; const bVal = mc4Bin[mc4] ? mc4Bin[mc4].val : 0, sGross = mc4Sales[mc4] ? mc4Sales[mc4].gross : 0; const pctQty = bQty > 0 ? (sQty / bQty) * 100 : 0, pctGross = bVal > 0 ? (sGross / bVal) * 100 : 0; return { mc4, bQty, sQty, pctQty, bVal, sGross, pctGross }; });
+            applyCompareSort();
+        }
+        function sortMCLv4Compare(colIdx) { if (compareSortState.col === colIdx) compareSortState.asc = !compareSortState.asc; else { compareSortState.col = colIdx; compareSortState.asc = false; } applyCompareSort(); }
+        function applyCompareSort() {
+            if(!window.appCompareData) return; const asc = compareSortState.asc ? 1 : -1; const col = compareSortState.col;
+            const data = [...window.appCompareData].sort((a, b) => { if (col === 0) return a.mc4.localeCompare(b.mc4) * asc; return ([a.mc4, a.bQty, a.sQty, a.pctQty, a.bVal, a.sGross, a.pctGross][col] - [b.mc4, b.bQty, b.sQty, b.pctQty, b.bVal, b.sGross, b.pctGross][col]) * asc; });
+            document.getElementById('tableMCLv4CompareBody').innerHTML = data.map(x => `<tr class="hover:bg-slate-50 transition border-b border-slate-100"><td class="px-4 py-2 font-bold text-slate-700 bg-slate-50 border-r border-slate-200">${x.mc4}</td><td class="px-4 py-2 text-center text-slate-600">${formatNum(x.bQty)}</td><td class="px-4 py-2 text-center font-semibold">${formatNum(x.sQty)}</td><td class="px-4 py-2 text-center font-bold text-orange-600 bg-orange-50/50">${formatDec(x.pctQty)}%</td><td class="px-4 py-2 text-right text-slate-600">${formatRp(x.bVal)}</td><td class="px-4 py-2 text-right font-semibold">${formatRp(x.sGross)}</td><td class="px-4 py-2 text-center font-bold text-orange-600 bg-orange-50/50">${formatDec(x.pctGross)}%</td></tr>`).join('');
+        }
+
+        function renderTaggingTable() {
+            if(!window.appRAData || window.appRAData.length === 0) return;
+            const targetGross = parseFloat(document.getElementById('inputTargetGross').value) || 0, pctEA = parseFloat(document.getElementById('inputPctEA').value) || 0, pctWS = parseFloat(document.getElementById('inputPctWS').value) || 0, pctTT = parseFloat(document.getElementById('inputPctTT').value) || 0; const pctWI = Math.max(0, 100 - (pctEA + pctWS + pctTT)); document.getElementById('lblPctWI').innerText = formatDec(pctWI);
+            const defaultShare = window.appRAData.length > 0 ? (100 / window.appRAData.length) : 0; const getBoxClass = (pct) => pct < 95 ? 'ind-red' : (pct < 100 ? 'ind-orange' : 'ind-green');
+            document.getElementById('tableTaggingBody').innerHTML = window.appRAData.map(ra => {
+                let raShare = (appTargets.shares && appTargets.shares[ra.name] !== undefined) ? parseFloat(appTargets.shares[ra.name]) : defaultShare;
+                const tTotal = targetGross * (raShare / 100), aWI = tTotal * (pctWI / 100), aEA = tTotal * (pctEA / 100), aWS = tTotal * (pctWS / 100), aTT = tTotal * (pctTT / 100);
+                let shareHtml = currentRole === 'SH' ? `<div class="mt-1 flex items-center gap-1"><span class="text-[10px] lg:text-xs text-slate-500">Share:</span><input type="number" step="0.1" value="${raShare}" data-ra="${ra.name}" class="ra-share-input w-14 lg:w-16 border border-slate-300 rounded px-1.5 py-0.5 text-xs font-bold text-center focus:outline-none focus:border-eiger-orange" oninput="calculateTotalShareIndicator()"><span class="text-xs text-slate-500">%</span></div>` : `<div class="text-[10px] lg:text-xs text-slate-500 font-normal mt-0.5">Share: ${formatDec(raShare)}%</div>`;
+                return `<tr class="hover:bg-slate-50 transition"><td class="p-3 lg:p-4 border font-bold text-slate-800 bg-slate-50 text-xs lg:text-sm"><div class="text-sm lg:text-base">${ra.name}</div>${shareHtml}</td><td class="p-3 lg:p-4 border text-right"><div class="font-bold text-slate-800 text-xs lg:text-sm">${formatRp(ra.wiActual)} <span class="px-1.5 py-0.5 rounded text-[10px] lg:text-xs font-bold ml-1 ${getBoxClass(aWI>0?(ra.wiActual/aWI)*100:0)}">${formatDec(aWI>0?(ra.wiActual/aWI)*100:0)}%</span></div><div class="text-[11px] lg:text-[12px] font-medium text-slate-600 mt-1">Trg: ${formatRp(aWI)}</div></td><td class="p-3 lg:p-4 border text-right"><div class="font-bold text-slate-800 text-xs lg:text-sm">${formatRp(ra.eaActual)} <span class="px-1.5 py-0.5 rounded text-[10px] lg:text-xs font-bold ml-1 ${getBoxClass(aEA>0?(ra.eaActual/aEA)*100:0)}">${formatDec(aEA>0?(ra.eaActual/aEA)*100:0)}%</span></div><div class="text-[11px] lg:text-[12px] font-medium text-slate-600 mt-1">Trg: ${formatRp(aEA)}</div></td><td class="p-3 lg:p-4 border text-right"><div class="font-bold text-slate-800 text-xs lg:text-sm">${formatRp(ra.wsActual)} <span class="px-1.5 py-0.5 rounded text-[10px] lg:text-xs font-bold ml-1 ${getBoxClass(aWS>0?(ra.wsActual/aWS)*100:0)}">${formatDec(aWS>0?(ra.wsActual/aWS)*100:0)}%</span></div><div class="text-[11px] lg:text-[12px] font-medium text-slate-600 mt-1">Trg: ${formatRp(aWS)}</div></td><td class="p-3 lg:p-4 border text-right"><div class="font-bold text-slate-800 text-xs lg:text-sm">${formatRp(ra.ttActual)} <span class="px-1.5 py-0.5 rounded text-[10px] lg:text-xs font-bold ml-1 ${getBoxClass(aTT>0?(ra.ttActual/aTT)*100:0)}">${formatDec(aTT>0?(ra.ttActual/aTT)*100:0)}%</span></div><div class="text-[11px] lg:text-[12px] font-medium text-slate-600 mt-1">Trg: ${formatRp(aTT)}</div></td><td class="p-3 lg:p-4 border text-right font-extrabold text-eiger-orange bg-orange-50/50 text-sm lg:text-base">${formatRp(ra.gross)}</td><td class="p-3 lg:p-4 border text-center font-extrabold bg-slate-50"><span class="px-2 lg:px-2.5 py-1 rounded text-xs lg:text-sm ${getBoxClass(tTotal>0?(ra.gross/tTotal)*100:0)}">${formatDec(tTotal>0?(ra.gross/tTotal)*100:0)}%</span></td></tr>`;
+            }).join(''); calculateTotalShareIndicator();
+        }
+        function calculateTotalShareIndicator() { let sum = 0; document.querySelectorAll('.ra-share-input').forEach(i => sum += parseFloat(i.value) || 0); const indicator = document.getElementById('totalShareIndicator'); if (indicator) { indicator.innerText = `Total Share RA: ${formatDec(sum)}%`; indicator.className = Math.abs(sum - 100) > 0.01 ? "font-bold text-red-600 text-xs" : "font-bold text-emerald-600 text-xs"; } }
+
+        function sortTable(type, colIdx) { if (sortState[type].col === colIdx) sortState[type].asc = !sortState[type].asc; else { sortState[type].col = colIdx; sortState[type].asc = false; } applySort(type); }
+        function applySort(type) {
+            let data, bodyId, htmlGen; const asc = sortState[type].asc ? 1 : -1; const col = sortState[type].col;
+            if (type === 'mc3') { data = [...window.appMC3Data].sort((a, b) => (col === 0 ? a.cat.localeCompare(b.cat) : (col === 1 ? a.gross - b.gross : a.qty - b.qty)) * asc); bodyId = 'tableMC3Body'; htmlGen = (x) => `<tr class="border-b border-slate-100"><td class="px-4 py-2 font-medium">${x.cat}</td><td class="px-4 py-2 text-right">${formatRp(x.gross)}</td><td class="px-4 py-2 text-center">${formatNum(x.qty)}</td></tr>`; }
+            else if (type === 'mc4') { data = [...window.appMC4Data].sort((a, b) => (col === 0 ? a.lv4.localeCompare(b.lv4) : col === 1 ? a.lv3.localeCompare(b.lv3) : (col === 2 ? a.gross - b.gross : a.qty - b.qty)) * asc); bodyId = 'tableMC4Body'; htmlGen = (x) => `<tr class="border-b border-slate-100"><td class="px-4 py-2 font-medium">${x.lv4}</td><td class="px-4 py-2 text-slate-500">${x.lv3}</td><td class="px-4 py-2 text-right">${formatRp(x.gross)}</td><td class="px-4 py-2 text-center">${formatNum(x.qty)}</td></tr>`; }
+            else if (type === 'ra') { data = [...window.appRAData].sort((a, b) => (col===0?a.name.localeCompare(b.name):[a.name, a.trxs, a.qty, a.upt, a.bs, a.gross][col] - [b.name, b.trxs, b.qty, b.upt, b.bs, b.gross][col]) * asc); bodyId = 'tableRABody'; htmlGen = (x) => `<tr class="border-b border-slate-100"><td class="px-4 py-3 lg:py-4 font-bold text-slate-800">${x.name}</td><td class="px-4 py-3 lg:py-4 text-center">${formatNum(x.trxs)}</td><td class="px-4 py-3 lg:py-4 text-center">${formatNum(x.qty)}</td><td class="px-4 py-3 lg:py-4 text-center font-bold text-amber-600">${formatDec(x.upt)}</td><td class="px-4 py-3 lg:py-4 text-center font-bold text-sky-600">${formatRp(x.bs)}</td><td class="px-4 py-3 lg:py-4 text-right font-bold text-eiger-orange">${formatRp(x.gross)}</td></tr>`; }
+            document.getElementById(bodyId).innerHTML = data.map(htmlGen).join('');
+        }
+
+        let currentViewData = [];
+        function updateDashboardHarian() {
+            const selectedDate = document.getElementById('dateSelector').value, badge = document.getElementById('tabDateBadge'); let isKumulatif = false;
+            if (selectedDate === 'ALL') { currentViewData = cleanData; badge.classList.remove('hidden'); badge.innerText = "Komulatif"; isKumulatif = true; } else { currentViewData = cleanData.filter(x => x._CleanDate === selectedDate); badge.classList.remove('hidden'); const dd = new Date(selectedDate); if (!isNaN(dd.getTime())) badge.innerText = dd.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }); }
+            const gross = currentViewData.reduce((s, x) => s + x._Gross, 0); const net = currentViewData.reduce((s, x) => s + x._Net, 0); const qty = currentViewData.reduce((s, x) => s + x._Qty, 0); const trxCount = new Set(currentViewData.map(x => x['Invoice No'])).size;
+            const memberGross = currentViewData.filter(x => x._CustName && x._CustName.length > 0).reduce((s, x) => s + x._Gross, 0); const memberPct = gross > 0 ? (memberGross / gross) * 100 : 0;
+            document.getElementById('kpiGross').innerText = formatRp(gross); document.getElementById('kpiNet').innerText = formatRp(net); document.getElementById('kpiTrxQty').innerText = `${formatNum(trxCount)} / ${formatNum(qty)}`; document.getElementById('kpiUpt').innerText = formatDec(trxCount > 0 ? (qty / trxCount) : 0); document.getElementById('kpiBasketSize').innerText = formatRp(trxCount > 0 ? (gross / trxCount) : 0); document.getElementById('kpiMemberGross').innerText = formatRp(memberGross); document.getElementById('kpiMemberPct').innerText = `${formatDec(memberPct)}% dari Total Sales`;
+            const targetValue = appTargets.gross || 0; let displayAch = 0; let targetByDay = 0;
+            if (isKumulatif || cleanData.length === 0) { document.getElementById('targetLabelInfo').innerText = `Target Bulanan: ${formatRp(targetValue)}`; displayAch = targetValue > 0 ? (gross / targetValue) * 100 : 0; } else { const dObj = new Date(selectedDate); if (!isNaN(dObj.getTime())) { const lastDayOfMonth = new Date(dObj.getFullYear(), dObj.getMonth() + 1, 0).getDate(); const daysPassed = dObj.getDate(); const remainingDays = Math.max(1, lastDayOfMonth - daysPassed + 1); const totalMonthlySoFar = cleanData.reduce((s, x) => s + x._Gross, 0); const sisaTarget = Math.max(0, targetValue - totalMonthlySoFar + gross); targetByDay = sisaTarget / remainingDays; } else { targetByDay = targetValue / 30; } document.getElementById('targetLabelInfo').innerText = `Target By Day: ${formatRp(targetByDay)}`; displayAch = targetByDay > 0 ? (gross / targetByDay) * 100 : 0; }
+            const achBadge = document.getElementById('targetAchBadge'); achBadge.innerText = `${formatDec(displayAch)}% Ach`; achBadge.className = "px-2 py-0.5 rounded text-white font-bold "; if (displayAch >= 100) achBadge.className += "bg-emerald-500 shadow-sm"; else if (displayAch >= 95) achBadge.className += "bg-orange-500 shadow-sm"; else achBadge.className += "bg-red-500 shadow-sm";
+            renderTableItems();
+        }
+
+        function renderTableItems() {
+            const q = document.getElementById('searchItem').value.toLowerCase();
+            const displayData = [...currentViewData].reverse().filter(x => (!q || String(x['Invoice No']).toLowerCase().includes(q) || String(x['SKU Code']).includes(q) || String(x['Sku Name']).toLowerCase().includes(q) || String(x['Sales Person']).toLowerCase().includes(q)));
+            document.getElementById('tableItemsBody').innerHTML = displayData.slice(0, 100).map(x => `<tr class="hover:bg-slate-50 transition border-b border-slate-100"><td class="px-4 py-2 text-[11px] lg:text-xs text-slate-500">${x['Order Date']}</td><td class="px-4 py-2 font-mono text-[11px] lg:text-xs">${x['Invoice No']}</td><td class="px-4 py-2"><div class="font-bold text-xs lg:text-sm">${x['SKU Code']}</div><div class="text-[10px] lg:text-[11px] text-slate-500 truncate w-40 lg:w-48">${x['Sku Name']}</div></td><td class="px-4 py-2 text-[11px] lg:text-xs">${x['Category Lv.4']}</td><td class="px-4 py-2 text-center font-semibold">${x._Qty}</td><td class="px-4 py-2 text-right">${formatRp(x._Gross)}</td><td class="px-4 py-2 text-right text-red-400">${formatRp(x._Discount)}</td><td class="px-4 py-2 text-right font-bold">${formatRp(x._Net)}</td><td class="px-4 py-2 text-[11px] lg:text-xs">${x['Sales Person'] || '-'}</td></tr>`).join('');
+        }
+
+        // ==== UPLOAD DATA BY BIN (LOGIC BARU) ====
+        document.getElementById('fileUploadBin').addEventListener('change', (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            const btnSpan = document.getElementById('btnBinText'); const originalContent = btnSpan.innerHTML; btnSpan.innerHTML = 'Membaca...';
+            const reader = new FileReader(); reader.onerror = () => { alert("Gagal membaca file Bin."); btnSpan.innerHTML = originalContent; };
+            reader.onload = (evt) => {
+                try {
+                    rawBinData = XLSX.utils.sheet_to_json(XLSX.read(new Uint8Array(evt.target.result), { type: 'array' }).Sheets[XLSX.read(new Uint8Array(evt.target.result), { type: 'array' }).SheetNames[0]], { defval: "" });
+                    processBinData(true); 
+                    btnSpan.innerHTML = 'By Bin';
+                    document.getElementById('uploadPlaceholder').classList.add('hidden'); 
+                    document.getElementById('mainDashboard').classList.remove('hidden'); 
+                    document.getElementById('binUploadPlaceholder').classList.add('hidden'); 
+                    document.getElementById('binFilterSection').classList.remove('hidden'); 
+                    document.getElementById('binTableContainer').classList.remove('hidden');
+                    if (cleanData.length === 0) switchTab('tab-cekbarang', document.querySelector('button[onclick*="tab-cekbarang"]'));
+                } catch (err) { alert("Format Invalid."); btnSpan.innerHTML = originalContent; }
+            }; reader.readAsArrayBuffer(file);
+        });
+
+        // 00:00-Reset Upload Function
+        function uploadBinDataToFirebase(dataToSave) {
+            if (!db) return; 
+            const btnSpan = document.getElementById('btnBinText');
+            const originalText = btnSpan.innerHTML;
+            btnSpan.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menyimpan...';
+            
+            // Kompresi data untuk mengurangi ukuran (tambahkan m3 untuk MC LV 3)
+            const compressedData = dataToSave.map(row => ({
+                s: row['SKU Code'] || '', n: row['SKU Name'] || '', g: row['Generic Code'] || '', b: row['Bin Code'] || '', m2: row['MC LV 2'] || '', m3: row['MC LV 3'] || '', m4: row['MC LV 4'] || row['MC 4'] || row['Category Lv.4'] || '', q: safeNum(row['Total Qty']) || safeNum(row['Available Qty']) || 0
+            })).filter(x => x.s && !x.s.startsWith('81'));
+
+            const chunks = [];
+            for (let i = 0; i < compressedData.length; i += 2500) { chunks.push(compressedData.slice(i, i + 2500)); }
+
+            const timestamp = Date.now();
+            const promises = [db.collection("settings").doc("bin_data_meta").set({ 
+                timestamp: timestamp, chunks: chunks.length, formattedTime: formatTanggalWaktu(timestamp)
+            })];
+            chunks.forEach((chunk, idx) => { promises.push(db.collection("settings").doc(`bin_data_chunk_${idx}`).set({ data: chunk })); });
+
+            Promise.all(promises).then(() => {
+                btnSpan.innerHTML = '<i class="fa-solid fa-cloud-check"></i> By Bin';
+                document.getElementById('lastUploadBinTime').innerText = formatTanggalWaktu(timestamp);
+                document.getElementById('lastUploadBinTime').classList.remove('text-red-500');
+                document.getElementById('lastUploadBinTime').classList.add('text-eiger-orange');
+            }).catch(err => { btnSpan.innerHTML = originalText; });
+        }
+
+        function processBinData(isFromUpload = false) {
+            let skuMap = {}; let mc2Map = {}; let mc4Map = {}; let validRawBins = []; globalDamageData = [];
+            rawBinData.forEach(row => {
+                const skuCode = String(row['SKU Code'] || '').trim(); if (!skuCode || skuCode === 'undefined' || skuCode.startsWith('81')) return;
+                const skuName = String(row['SKU Name'] || '-').trim(); const genCode = String(row['Generic Code'] || skuCode.substring(0, 9)).trim(); const binCode = String(row['Bin Code'] || '-').trim().toUpperCase(); 
+                const mc2 = String(row['MC LV 2'] || '-').trim(); 
+                const mc3 = String(row['MC LV 3'] || '-').trim(); 
+                const mc4 = String(row['MC LV 4'] || '-').trim();
+                let qty = safeNum(row['Total Qty']); if (qty === 0) qty = safeNum(row['Available Qty']);
+                if (binCode.startsWith('WX-')) { if (qty > 0) { globalDamageData.push({ skuCode, skuName, mc2, mc3, mc4, binCode, qty, genCode }); } return; }
+                validRawBins.push(row);
+                if (mc2 !== '-') mc2Map[mc2] = (mc2Map[mc2] || 0) + qty; if (mc4 !== '-') mc4Map[mc4] = (mc4Map[mc4] || 0) + qty;
+                if(!skuMap[skuCode]) skuMap[skuCode] = { skuCode, skuName, genCode, mc2, mc3, mc4, totalQty: 0, bins: {} }; 
+                skuMap[skuCode].totalQty += qty; if (!skuMap[skuCode].bins[binCode]) skuMap[skuCode].bins[binCode] = 0; skuMap[skuCode].bins[binCode] += qty;
+            });
+            groupedBinData = Object.values(skuMap).map(item => {
+                let binsW = [], binsS = [], binsOther = [];
+                Object.entries(item.bins).forEach(([bCode, q]) => { if (!bCode || bCode === '-') return; const bStr = `${bCode} (${q})`; const prefix = bCode.charAt(0).toUpperCase(); if (prefix === 'W') binsW.push(bStr); else if (prefix === 'S') binsS.push(bStr); else binsOther.push(bStr); });
+                return { ...item, binsW: binsW.sort(), binsS: binsS.sort(), binsOther: binsOther.sort() };
+            });
+            groupedBinData.sort((a,b) => a.skuName.localeCompare(b.skuName));
+            document.getElementById('filterCheckboxContainer').innerHTML = Object.keys(mc2Map).sort().map(mc => `<label class="flex items-center px-2 py-1.5 hover:bg-slate-100 rounded cursor-pointer transition"><input type="checkbox" value="${mc}" class="mc2-checkbox h-4 w-4 text-eiger-orange rounded border-slate-300 focus:ring-eiger-orange" checked onchange="renderBinTable()"><span class="ml-2 text-[10px] lg:text-xs font-semibold text-slate-700 flex-1"><span class="mc-name-span">${mc}</span> <span class="text-slate-400 font-normal ml-1">${formatNum(mc2Map[mc])}</span></span></label>`).join('');
+            document.getElementById('filterCheckboxContainerMc4').innerHTML = Object.keys(mc4Map).sort().map(mc => `<label class="flex items-center px-2 py-1.5 hover:bg-slate-100 rounded cursor-pointer transition"><input type="checkbox" value="${mc}" class="mc4-checkbox h-4 w-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-600" checked onchange="renderBinTable()"><span class="ml-2 text-[10px] lg:text-xs font-semibold text-slate-700 flex-1"><span class="mc-name-span">${mc}</span> <span class="text-slate-400 font-normal ml-1">${formatNum(mc4Map[mc])}</span></span></label>`).join('');
+            
+            renderBinTable(); analyzeDisplayStatus(validRawBins); 
+
+            // Trigger Upload ke Firebase
+            if (isFromUpload) { uploadBinDataToFirebase(rawBinData); }
+        }
+
+        // ==== ANALISIS DISPLAY (UNDISPLAYED / DOUBLE DISPLAY) ====
+        function analyzeDisplayStatus(validRawBins) {
+            let genCodeMap = {}; 
+            validRawBins.filter(r => String(r['SKU Code']||'').trim().startsWith('91')).forEach(row => {
+                const skuCode = String(row['SKU Code'] || '').trim(); const genCode = skuCode.length >= 9 ? skuCode.substring(0, 9) : skuCode; const binCode = String(row['Bin Code'] || '').trim().toUpperCase();
+                let qty = safeNum(row['Total Qty']); if(qty === 0) qty = safeNum(row['Available Qty']);
+                if (!genCodeMap[genCode]) { genCodeMap[genCode] = { sBins: new Set(), items: [], isDisplayed: false }; }
+                if (binCode.startsWith('S')) { genCodeMap[genCode].sBins.add(binCode); genCodeMap[genCode].isDisplayed = true; }
+                
+                // Ekstrak MC3 disini
+                genCodeMap[genCode].items.push({ 
+                    skuCode, 
+                    skuName: String(row['SKU Name']||'-').trim(), 
+                    mc2: String(row['MC LV 2']||'-').trim(), 
+                    mc3: String(row['MC LV 3']||'-').trim(),
+                    mc4: String(row['MC LV 4']||row['MC 4']||row['Category Lv.4']||'Uncategorized').trim(), 
+                    binCode, 
+                    qty, 
+                    genCode 
+                });
+            });
+            const uniqueGenCodesCount = Object.keys(genCodeMap).length; const displayedCount = Object.values(genCodeMap).filter(v => v.isDisplayed).length; const percentDisplayed = uniqueGenCodesCount > 0 ? (displayedCount / uniqueGenCodesCount) * 100 : 0;
+            document.getElementById('undisplayedSection').classList.remove('hidden'); const bar = document.getElementById('displayProgressBar'); bar.style.width = `${percentDisplayed}%`; bar.innerText = `${formatDec(percentDisplayed)}% terdisplay`;
+            globalUndisplayedData = []; globalDoubleDisplayData = [];
+            Object.values(genCodeMap).forEach(data => { if (!data.isDisplayed) { globalUndisplayedData.push(...data.items); } else if (data.sBins.size >= 2) { globalDoubleDisplayData.push(...data.items); } });
+            
+            // Reset Parent Filter upon new data calculation
+            activeDisplayParentFilter = "ALL";
+            renderDisplayCards();
+        }
+
+        window.setParentFilter = function(filterVal) {
+            activeDisplayParentFilter = filterVal;
+            renderDisplayCards();
+        };
+
+        function renderDisplayCards() {
+            activeDisplayMode = document.querySelector('input[name="displayMode"]:checked').value;
+            let sourceData = activeDisplayMode === 'undisplayed' ? globalUndisplayedData : globalDoubleDisplayData;
+
+            // 1. Render Parent Filters (MC Lvl 3)
+            let parentCategories = new Set();
+            sourceData.forEach(x => { if(x.mc3 && x.mc3 !== '-') parentCategories.add(x.mc3); });
+            let parentArr = Array.from(parentCategories).sort();
+
+            let filterHtml = `<div onclick="setParentFilter('ALL')" class="${activeDisplayParentFilter === 'ALL' ? 'bg-eiger-orange text-white' : 'bg-orange-50 text-eiger-orange hover:bg-orange-100'} rounded-lg py-1.5 px-3 lg:px-4 text-center cursor-pointer transition shadow-sm border border-orange-500 flex flex-col items-center justify-center min-w-[70px]">
+                <div class="font-bold uppercase text-[9px] lg:text-[11px]">ALL MC</div>
+            </div>`;
+
+            parentArr.forEach(mc3 => {
+                const isActive = activeDisplayParentFilter === mc3;
+                filterHtml += `<div onclick="setParentFilter('${mc3}')" class="${isActive ? 'bg-eiger-orange text-white' : 'bg-orange-50 text-eiger-orange hover:bg-orange-100'} rounded-lg py-1.5 px-3 lg:px-4 text-center cursor-pointer transition shadow-sm border border-orange-500 flex flex-col items-center justify-center min-w-[70px]">
+                    <div class="font-bold uppercase text-[9px] lg:text-[11px]">${mc3}</div>
+                </div>`;
+            });
+            document.getElementById('undisplayedMC3Container').innerHTML = filterHtml;
+
+            // 2. Render MC4 Cards based on Filter
+            let filteredSourceData = activeDisplayParentFilter === 'ALL' ? sourceData : sourceData.filter(x => x.mc3 === activeDisplayParentFilter);
+
+            let mc4Summary = {};
+            filteredSourceData.forEach(x => { if(!mc4Summary[x.mc4]) mc4Summary[x.mc4] = new Set(); mc4Summary[x.mc4].add(x.genCode); });
+
+            let cardsHtml = Object.keys(mc4Summary).sort().map(mc4 => `<div onclick="openUndisplayedModal('${mc4}')" class="bg-[#0a0a64] rounded-lg py-2 px-2 lg:px-3 text-center cursor-pointer hover:bg-blue-900 transition shadow-md border border-black flex flex-col items-center justify-center min-h-[60px]"><div class="text-white font-bold uppercase text-[9px] lg:text-[11px] leading-tight mb-0.5 break-words">${mc4}</div><div class="text-[#f97316] font-bold text-[10px] lg:text-[11px]">${mc4Summary[mc4].size} items</div></div>`).join('');
+
+            // Damage Card logic
+            if (activeDisplayMode === 'undisplayed' && (activeDisplayParentFilter === 'ALL' || activeDisplayParentFilter === 'DAMAGE' || activeDisplayParentFilter === 'BIN DAMAGE')) {
+               let damageGenSet = new Set(); globalDamageData.forEach(x => damageGenSet.add(x.genCode));
+               if (globalDamageData.length > 0) {
+                   cardsHtml += `<div onclick="openUndisplayedModal('DAMAGE_WX')" class="bg-[#4a3b32] rounded-lg py-2 px-2 lg:px-3 text-center cursor-pointer hover:bg-[#5e4b3f] transition shadow-md border border-black flex flex-col items-center justify-center min-h-[60px]"><div class="text-white font-bold uppercase text-[9px] lg:text-[11px] leading-tight mb-0.5 break-words">BIN DAMAGE (WX)</div><div class="text-white font-bold text-[10px] lg:text-[11px]">${damageGenSet.size} items</div></div>`;
+               }
+            }
+
+            document.getElementById('undisplayedCardsContainer').innerHTML = cardsHtml;
+        }
+
+        function openUndisplayedModal(mc4) {
+            activeUndisplayedMC4 = mc4; 
+            const titleEl = document.getElementById('modalUndisplayedTitle'); 
+            const descEl = document.getElementById('modalUndisplayedDesc'); 
+            const theadEl = document.getElementById('tableUndisplayedHead'); 
+            const actionsEl = document.getElementById('modalUndisplayedActions');
+            sortUndisplayedState = { col: 0, asc: true };
+
+            actionsEl.innerHTML = `<button onclick="exportUndisplayedExcel()" class="flex-1 lg:flex-none bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer border border-slate-600"><i class="fa-solid fa-file-excel"></i> Export Excel</button><button onclick="copyUndisplayedTextWA()" class="flex-1 lg:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-semibold transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer border border-emerald-700"><i class="fa-brands fa-whatsapp"></i> Copy Text WA</button><span class="close font-bold text-slate-400 hover:text-slate-700 cursor-pointer text-2xl ml-2 leading-none hidden lg:block" onclick="document.getElementById('undisplayedModal').style.display='none'">&times;</span><button class="w-full lg:hidden bg-slate-200 text-slate-700 px-3 py-2 rounded-lg text-xs font-bold mt-2" onclick="document.getElementById('undisplayedModal').style.display='none'">Tutup</button>`;
+            
+            if (mc4 === 'DAMAGE_WX') { 
+                titleEl.innerText = `BIN DAMAGE (WX-)`; 
+                descEl.innerText = "Daftar artikel di Bin Damage/Return (WX-). Dikelompokkan berdasarkan Generic.";
+            } else if (activeDisplayMode === 'undisplayed') { 
+                titleEl.innerText = `Kategori (MC4): ${mc4} - Belum Terdisplay`; 
+                descEl.innerText = "Daftar SKU belum terdisplay (Dikelompokkan berdasarkan Generic)."; 
+            } else { 
+                titleEl.innerText = `Kategori (MC4): ${mc4} - Double Display`; 
+                descEl.innerText = "Daftar Generic Code yang menempati 2 atau lebih Rak Display (S)."; 
+            }
+
+            theadEl.innerHTML = `<tr>
+                <th class="px-3 lg:px-4 py-2 lg:py-3 border-b border-slate-200 text-left">Generic Code</th>
+                <th class="px-3 lg:px-4 py-2 lg:py-3 border-b border-slate-200 text-center">Total Qty</th>
+                <th class="px-3 lg:px-4 py-2 lg:py-3 border-b border-slate-200 text-center">Varian</th>
+            </tr>`;
+
+            renderUndisplayedTable(); 
+            document.getElementById('undisplayedModal').style.display = 'flex';
+        }
+
+        window.toggleAccordion = function(id) { const el = document.getElementById(id); const icon = document.getElementById('icon-' + id); if (el.classList.contains('hidden')) { el.classList.remove('hidden'); if(icon) { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-up'); } } else { el.classList.add('hidden'); if(icon) { icon.classList.remove('fa-chevron-up'); icon.classList.add('fa-chevron-down'); } } };
+
+        function renderUndisplayedTable() {
+            const tbody = document.getElementById('tableUndisplayedBody'); 
+            let items = [];
+            
+            if (activeUndisplayedMC4 === 'DAMAGE_WX') items = globalDamageData;
+            else if (activeDisplayMode === 'undisplayed') items = globalUndisplayedData.filter(x => x.mc4 === activeUndisplayedMC4);
+            else items = globalDoubleDisplayData.filter(x => x.mc4 === activeUndisplayedMC4);
+
+            let groupedGen = {};
+            items.forEach(x => { 
+                const gen = x.genCode || (x.skuCode.length >= 9 ? x.skuCode.substring(0,9) : x.skuCode); 
+                if (activeDisplayMode === 'double' && !x.binCode.toUpperCase().startsWith('S')) return;
+                if(!groupedGen[gen]) groupedGen[gen] = { genCode: gen, qty: 0, skus: [] }; 
+                groupedGen[gen].qty += x.qty; 
+                groupedGen[gen].skus.push(x); 
+            });
+
+            let htmlBuffer = '';
+            Object.values(groupedGen).sort((a,b) => a.genCode.localeCompare(b.genCode)).forEach((g, idx) => {
+                let skuMapAgg = {}; 
+                g.skus.forEach(s => { 
+                    const key = s.skuCode + '|' + s.binCode; 
+                    if(!skuMapAgg[key]) skuMapAgg[key] = {...s}; else skuMapAgg[key].qty += s.qty; 
+                }); 
+                const uniqueSkus = Object.values(skuMapAgg).sort((a,b) => a.skuCode.localeCompare(b.skuCode));
+
+                const firstSku = uniqueSkus[0].skuCode;
+                const images = masterGambarMap[firstSku] || masterGambarMap[firstSku.trim()];
+                let thumbHtml = '';
+                if (images && images.length > 0) thumbHtml = `<img src="${images[0]}" class="w-10 h-10 lg:w-12 lg:h-12 rounded object-cover border border-slate-200 shadow-sm bg-white flex-shrink-0">`;
+                else thumbHtml = `<div class="w-10 h-10 lg:w-12 lg:h-12 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-300 flex-shrink-0"><i class="fa-solid fa-image"></i></div>`;
+
+                htmlBuffer += `<tr class="hover:bg-slate-100 cursor-pointer border-b border-slate-200 transition" onclick="toggleAccordion('acc-gen-${idx}')">
+                    <td class="px-3 lg:px-4 py-3 lg:py-4 flex items-center gap-3">
+                        ${thumbHtml}
+                        <div>
+                            <div class="font-extrabold text-slate-800 text-sm lg:text-[15px]">${g.genCode}</div>
+                            <div class="text-[10px] lg:text-[11px] text-slate-500 font-medium uppercase mt-0.5">${uniqueSkus[0].mc2}</div>
+                        </div>
+                    </td>
+                    <td class="px-3 lg:px-4 py-3 lg:py-4 font-bold text-eiger-orange text-center text-sm lg:text-[15px]">${g.qty} Pcs</td>
+                    <td class="px-3 lg:px-4 py-3 lg:py-4 text-center text-slate-400 text-base lg:text-lg">
+                        <i id="icon-acc-gen-${idx}" class="fa-solid fa-chevron-down"></i>
+                    </td>
+                </tr>
+                <tr id="acc-gen-${idx}" class="hidden bg-slate-50 border-b-4 border-slate-300 shadow-inner">
+                    <td colspan="3" class="p-2 lg:p-4">
+                        <table class="w-full text-[10px] lg:text-xs text-left border border-slate-200 bg-white rounded overflow-hidden">
+                            <thead class="bg-slate-200 text-slate-600 uppercase font-bold">
+                                <tr>
+                                    <th class="p-2 border-b">SKU & Varian</th>
+                                    <th class="p-2 border-b text-center hidden md:table-cell">MC Lv 2</th>
+                                    <th class="p-2 border-b text-center">Qty</th>
+                                    <th class="p-2 border-b text-right lg:text-left">Bin Code</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${uniqueSkus.map(s => {
+                                    // Potong Nama SKU
+                                    const shortSkuName = s.skuName.split(',')[0].trim();
+                                    return `<tr>
+                                        <td class="border-b p-2">
+                                            <div class="font-mono font-bold text-slate-700">${s.skuCode}</div>
+                                            <div class="text-slate-600 font-medium text-[9px] lg:text-[11px]">${shortSkuName}</div>
+                                        </td>
+                                        <td class="border-b p-2 text-center text-slate-500 hidden md:table-cell">${s.mc2}</td>
+                                        <td class="border-b p-2 text-center font-bold text-eiger-orange">${s.qty}</td>
+                                        <td class="border-b p-2 font-bold text-indigo-600 text-right lg:text-left">${s.binCode}</td>
+                                    </tr>`
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>`;
+            }); 
+            tbody.innerHTML = htmlBuffer;
+        }
+
+        window.copyUndisplayedTextWA = function() {
+            let items = [];
+            if (activeUndisplayedMC4 === 'DAMAGE_WX') items = globalDamageData; 
+            else if (activeDisplayMode === 'undisplayed') items = globalUndisplayedData.filter(x => x.mc4 === activeUndisplayedMC4); 
+            else if (activeDisplayMode === 'double') items = globalDoubleDisplayData.filter(x => x.mc4 === activeUndisplayedMC4 && x.binCode.toUpperCase().startsWith('S'));
+
+            if (items.length === 0) return alert("Tidak ada data untuk disalin.");
+
+            let headerText = "*DATA BELUM TERDISPLAY*"; 
+            if (activeUndisplayedMC4 === 'DAMAGE_WX') headerText = "*DATA BIN DAMAGE (WX-)*"; 
+            else if (activeDisplayMode === 'double') headerText = "*DATA DOUBLE DISPLAY (S)*";
+
+            let textOutput = `${headerText}\nKategori: ${activeUndisplayedMC4 === 'DAMAGE_WX' ? 'All (WX-)' : activeUndisplayedMC4}\n\n`;
+
+            let groupedGen = {};
+            items.forEach(x => {
+                const gen = x.genCode || (x.skuCode.length >= 9 ? x.skuCode.substring(0,9) : x.skuCode);
+                if(!groupedGen[gen]) groupedGen[gen] = { genCode: gen, skus: [] };
+                groupedGen[gen].skus.push(x);
+            });
+
+            Object.values(groupedGen).sort((a,b) => a.genCode.localeCompare(b.genCode)).forEach(g => {
+                textOutput += `generic : ${g.genCode}\n`;
+                let skuMapAgg = {};
+                g.skus.forEach(s => {
+                    const key = s.skuCode + '|' + s.binCode;
+                    if(!skuMapAgg[key]) skuMapAgg[key] = {...s}; else skuMapAgg[key].qty += s.qty;
+                });
+                const uniqueSkus = Object.values(skuMapAgg).sort((a,b) => a.skuCode.localeCompare(b.skuCode));
+                let mc2Value = uniqueSkus[0].mc2 || '-';
+
+                uniqueSkus.forEach(s => {
+                    // Terapkan potongan nama di WA Text juga
+                    const shortSkuName = s.skuName.split(',')[0].trim();
+                    textOutput += `- ${shortSkuName} | ${s.qty} pcs | ${s.binCode}\n`;
+                });
+                textOutput += `MC Lv2: ${mc2Value}\n\n`;
+            });
+
+            const tempInput = document.createElement("textarea"); 
+            tempInput.value = textOutput; 
+            document.body.appendChild(tempInput); 
+            tempInput.select(); 
+            document.execCommand("copy"); 
+            document.body.removeChild(tempInput); 
+            alert("✅ List data berhasil disalin!\nSilakan Paste (Tempel) di chat WhatsApp.");
+        };
+
+        function getActiveModalFlatData() {
+            let items = [];
+            if (activeUndisplayedMC4 === 'DAMAGE_WX') items = globalDamageData; else if (activeDisplayMode === 'undisplayed') items = globalUndisplayedData.filter(x => x.mc4 === activeUndisplayedMC4); else if (activeDisplayMode === 'double') items = globalDoubleDisplayData.filter(x => x.mc4 === activeUndisplayedMC4 && x.binCode.toUpperCase().startsWith('S'));
+            let grouped = {}; items.forEach(x => { const key = x.skuCode + '|' + x.binCode; if(!grouped[key]) grouped[key] = {...x}; else grouped[key].qty += x.qty; }); return Object.values(grouped);
+        }
+
+        window.copyUndisplayedTextWA = function() {
+            let items = [];
+            if (activeUndisplayedMC4 === 'DAMAGE_WX') items = globalDamageData; 
+            else if (activeDisplayMode === 'undisplayed') items = globalUndisplayedData.filter(x => x.mc4 === activeUndisplayedMC4); 
+            else if (activeDisplayMode === 'double') items = globalDoubleDisplayData.filter(x => x.mc4 === activeUndisplayedMC4 && x.binCode.toUpperCase().startsWith('S'));
+
+            if (items.length === 0) return alert("Tidak ada data untuk disalin.");
+
+            let headerText = "*DATA BELUM TERDISPLAY*"; 
+            if (activeUndisplayedMC4 === 'DAMAGE_WX') headerText = "*DATA BIN DAMAGE (WX-)*"; 
+            else if (activeDisplayMode === 'double') headerText = "*DATA DOUBLE DISPLAY (S)*";
+
+            let textOutput = `${headerText}\nKategori: ${activeUndisplayedMC4 === 'DAMAGE_WX' ? 'All (WX-)' : activeUndisplayedMC4}\n\n`;
+
+            let groupedGen = {};
+            items.forEach(x => {
+                const gen = x.genCode || (x.skuCode.length >= 9 ? x.skuCode.substring(0,9) : x.skuCode);
+                if(!groupedGen[gen]) groupedGen[gen] = { genCode: gen, skus: [] };
+                groupedGen[gen].skus.push(x);
+            });
+
+            Object.values(groupedGen).sort((a,b) => a.genCode.localeCompare(b.genCode)).forEach(g => {
+                textOutput += `generic : ${g.genCode}\n`;
+                
+                let skuMapAgg = {};
+                g.skus.forEach(s => {
+                    const key = s.skuCode + '|' + s.binCode;
+                    if(!skuMapAgg[key]) skuMapAgg[key] = {...s}; else skuMapAgg[key].qty += s.qty;
+                });
+                
+                const uniqueSkus = Object.values(skuMapAgg).sort((a,b) => a.skuCode.localeCompare(b.skuCode));
+                let mc2Value = uniqueSkus[0].mc2 || '-';
+
+                uniqueSkus.forEach(s => {
+                    textOutput += `- ${s.skuName} | ${s.qty} pcs | ${s.binCode}\n`;
+                });
+                textOutput += `MC Lv2: ${mc2Value}\n\n`;
+            });
+
+            const tempInput = document.createElement("textarea"); 
+            tempInput.value = textOutput; 
+            document.body.appendChild(tempInput); 
+            tempInput.select(); 
+            document.execCommand("copy"); 
+            document.body.removeChild(tempInput); 
+            alert("✅ List data berhasil disalin!\nSilakan Paste (Tempel) di chat WhatsApp.");
+        };
+
+        window.exportUndisplayedExcel = function() {
+            const displayData = getActiveModalFlatData(); if (displayData.length === 0) return alert("Tidak ada data untuk diexport.");
+            const exportData = displayData.map(x => ({ 'Generic Code': x.genCode || (x.skuCode.length >= 9 ? x.skuCode.substring(0,9) : x.skuCode), 'SKU Code': x.skuCode, 'SKU Name': x.skuName, 'MC Lv 2': x.mc2, 'MC Lv 3': x.mc3, 'MC Lv 4': x.mc4, 'Qty': x.qty, 'Bin Code': x.binCode }));
+            const ws = XLSX.utils.json_to_sheet(exportData); const wb = XLSX.utils.book_new(); let sheetName = "Data"; if (activeUndisplayedMC4 === 'DAMAGE_WX') sheetName = "Damage_WX"; else if (activeDisplayMode === 'double') sheetName = "Double_Display"; else sheetName = "Undisplayed";
+            XLSX.utils.book_append_sheet(wb, ws, sheetName); const safeName = activeUndisplayedMC4.replace(/[^a-z0-9]/gi, '_'); const fileName = `${sheetName}_${safeName}.xlsx`; XLSX.writeFile(wb, fileName);
+        };
+
+        // ==== RENDER BIN TABLE (MAIN) ====
+        function toggleDropdown(id) { const el = document.getElementById(id); if (el.classList.contains('hidden')) { document.getElementById('dropdownMC2').classList.add('hidden'); document.getElementById('dropdownMC4').classList.add('hidden'); el.classList.remove('hidden'); } else el.classList.add('hidden'); }
+        function filterDropdownList(inputId, containerId) { const query = document.getElementById(inputId).value.toLowerCase(); document.getElementById(containerId).querySelectorAll('label').forEach(lbl => { const textSpan = lbl.querySelector('.mc-name-span'); lbl.style.display = (textSpan && textSpan.innerText.toLowerCase().includes(query)) ? 'flex' : 'none'; }); }
+        function selectAllMC(className, isChecked) { document.querySelectorAll(`.${className}`).forEach(cb => cb.checked = isChecked); renderBinTable(); }
+
+        function renderBinTable() {
+            const tbody = document.getElementById('tableBinBody'); 
+            if (!tbody) return;
+
+            const searchInput = document.getElementById('searchBinInput');
+            const searchTxt = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+            const checkboxesMc2 = document.querySelectorAll('.mc2-checkbox'); 
+            const checkedMc2 = Array.from(checkboxesMc2).filter(cb => cb.checked).map(cb => cb.value);
+
+            const checkboxesMc4 = document.querySelectorAll('.mc4-checkbox'); 
+            const checkedMc4 = Array.from(checkboxesMc4).filter(cb => cb.checked).map(cb => cb.value);
+
+            let filtered = (typeof groupedBinData !== 'undefined' ? groupedBinData : []).filter(x => { 
+                // Filter hanya aktif jika ada checkbox yang dicentang
+                if (checkedMc2.length > 0 && !checkedMc2.includes(x.mc2)) return false; 
+                if (checkedMc4.length > 0 && !checkedMc4.includes(x.mc4)) return false; 
+                
+                if (searchTxt) { 
+                    const skuNameStr = x.skuName || '';
+                    const skuCodeStr = x.skuCode || '';
+                    const genCodeStr = x.genCode || '';
+                    const mc2Str = x.mc2 || '';
+                    const mc4Str = x.mc4 || '';
+                    const binsWStr = (x.binsW || []).join(' ');
+                    const binsSStr = (x.binsS || []).join(' ');
+                    const binsOStr = (x.binsOther || []).join(' ');
+
+                    const allTxt = [skuNameStr, skuCodeStr, genCodeStr, mc2Str, mc4Str, binsWStr, binsSStr, binsOStr].join(' ').toLowerCase(); 
+                    const searchTerms = searchTxt.split(' ').filter(t => t.trim() !== ''); 
+                    for (let term of searchTerms) { 
+                        if (!allTxt.includes(term)) return false; 
+                    } 
+                } 
+                return true; 
+            });
+
+            let currentTotalQty = 0, currentTotalHarga = 0; 
+            for (let item of filtered) { 
+                currentTotalQty += (item.totalQty || 0); 
+                const aData = (typeof masterArtikelMap !== 'undefined' && masterArtikelMap) 
+                    ? (masterArtikelMap[item.skuCode] || Object.values(masterArtikelMap).find(a => a.genericCode === item.genCode)) 
+                    : null; 
+                const prc = aData ? (aData.price || 0) : 0; 
+                currentTotalHarga += ((item.totalQty || 0) * prc); 
+            }
+
+            const totalQtyEl = document.getElementById('totalQtyText');
+            const totalHargaEl = document.getElementById('totalHargaText');
+            const totalContainerEl = document.getElementById('totalQtyContainer');
+
+            if (totalQtyEl) totalQtyEl.innerText = typeof formatNum === 'function' ? formatNum(currentTotalQty) : currentTotalQty; 
+            if (totalHargaEl) totalHargaEl.innerText = typeof formatRp === 'function' ? formatRp(currentTotalHarga) : currentTotalHarga; 
+            if (totalContainerEl) totalContainerEl.classList.remove('hidden');
+
+            if (filtered.length === 0) { 
+                tbody.innerHTML = '<div class="col-span-full text-center py-8 text-slate-500 font-medium bg-white rounded-xl border border-slate-200 shadow-sm">Tidak ada barang yang sesuai filter/pencarian.</div>'; 
+                return; 
+            }
+
+            const limit = Math.min(filtered.length, 250); 
+            let htmlBuffer = '';
+
+            for (let i = 0; i < limit; i++) {
+                const item = filtered[i]; 
+                
+                // Mencegah teks Bin terpotong berdiri pada tampilan HP
+                let allBinsHTML = []; 
+                (item.binsS || []).forEach(b => allBinsHTML.push(`<li class="text-[#3b82f6] font-bold text-[11px] md:text-xs whitespace-nowrap">${b}</li>`)); 
+                (item.binsW || []).forEach(b => allBinsHTML.push(`<li class="text-[#10b981] font-bold text-[11px] md:text-xs whitespace-nowrap">${b}</li>`)); 
+                (item.binsOther || []).forEach(b => allBinsHTML.push(`<li class="text-slate-500 font-medium text-[11px] md:text-xs whitespace-nowrap">${b}</li>`));
+                let binHtmlMerged = allBinsHTML.length > 0 ? allBinsHTML.join('') : `<span class="text-slate-300 text-xs">-</span>`;
+                
+                // Gambar Artikel
+                const images = (typeof masterGambarMap !== 'undefined' && masterGambarMap) 
+                    ? (masterGambarMap[item.skuCode] || masterGambarMap[(item.skuCode || '').trim()]) 
+                    : null; 
+
+                let thumbHtml = '';
+                if (images && images.length > 0) { 
+                    thumbHtml = `<img src="${images[0]}" class="max-w-full max-h-full object-contain" alt="${item.skuCode || ''}">`; 
+                } else {
+                    thumbHtml = `<i class="fa-solid fa-image text-3xl text-slate-200"></i>`;
+                }
+                
+                const aData2 = (typeof masterArtikelMap !== 'undefined' && masterArtikelMap)
+                    ? (masterArtikelMap[item.skuCode] || Object.values(masterArtikelMap).find(a => a.genericCode === item.genCode))
+                    : null; 
+                const itemPrice = aData2 ? (aData2.price || 0) : 0;
+                
+                // Menghilangkan Warna & Size pada Nama SKU (Aman dari null/undefined)
+                const rawName = item.skuName || item.skuCode || '';
+                const shortName = rawName.includes(',') ? rawName.split(',')[0].trim() : rawName;
+                
+                htmlBuffer += `
+                <div class="bg-white rounded-[1.25rem] border border-slate-300 shadow-sm p-3 md:p-4 flex gap-3 md:gap-4 hover:shadow-md transition cursor-pointer" onclick="openGallery('${item.skuCode}', ${item.totalQty || 0})">
+                    <!-- Sisi Kiri (Gambar) -->
+                    <div class="w-20 h-32 sm:w-28 sm:h-36 shrink-0 flex items-center justify-center bg-white rounded-lg">
+                        ${thumbHtml}
+                    </div>
+                    <!-- Sisi Kanan (Konten) -->
+                    <div class="flex-1 flex flex-col justify-between min-w-0">
+                        <div>
+                            <div class="text-[9px] md:text-xs text-slate-500 font-medium uppercase tracking-wider mb-0.5 truncate">${item.mc2 || ''} <span class="mx-0.5">|</span> <span class="font-extrabold text-slate-800">${item.mc4 || ''}</span></div>
+                            <div class="font-extrabold text-slate-800 text-xs md:text-base leading-snug mb-0.5 line-clamp-2">${shortName}</div>
+                            <div class="text-[11px] md:text-xs text-slate-500 font-mono mb-1">${item.skuCode || ''}</div>
+                            <div class="text-base md:text-xl font-extrabold text-[#00c060] text-right mb-1.5 drop-shadow-sm">${typeof formatRp === 'function' ? formatRp(itemPrice) : itemPrice}</div>
+                        </div>
+                        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2 border-t border-slate-100 pt-1.5">
+                            <div class="min-w-0">
+                                <div class="text-[10px] md:text-xs text-slate-600 font-semibold mb-0.5">List Bin :</div>
+                                <ul class="list-disc pl-3.5 space-y-0.5">
+                                    ${binHtmlMerged}
+                                </ul>
+                            </div>
+                            <div class="bg-[#ffe8d6] text-[#ff6b00] font-extrabold text-[10px] md:text-xs px-2.5 py-1 rounded-md whitespace-nowrap self-end sm:self-auto">
+                                QTY : ${item.totalQty || 0} PCS
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            if (filtered.length > limit) {
+                htmlBuffer += `<div class="col-span-full text-center py-4 text-xs font-bold text-slate-400 bg-slate-50 rounded-xl border border-slate-200">Menampilkan ${limit} dari ${filtered.length} data. Gunakan filter untuk spesifikasi.</div>`; 
+            }
+            tbody.innerHTML = htmlBuffer;
+        }
+        document.getElementById('searchBinInput')?.addEventListener('input', renderBinTable);
+
+        // ==== POSTER GENERATOR & MISC MODALS ====
+        let activePosterImages = []; let imgStates = [{ srcIdx: 0, scale: 1, tx: 0, ty: 0 }, { srcIdx: 1, scale: 1, tx: 0, ty: 0 }, { srcIdx: 2, scale: 1, tx: 0, ty: 0 }, { srcIdx: 3, scale: 1, tx: 0, ty: 0 }];
+        let bgState = { scale: 1, tx: 0, ty: 0 }; const bgContainer = document.getElementById('posterBgContainer'); const bgWrapper = document.getElementById('posterBgWrapper'); let isBgDragging = false, bgStartX, bgStartY;
+        document.getElementById('uploadPosterTemplate').addEventListener('change', function(e) { const file = e.target.files[0]; if (file) { const reader = new FileReader(); reader.onload = function(evt) { document.getElementById('posterBg').src = evt.target.result; document.getElementById('posterBgWrapper').classList.remove('hidden'); document.getElementById('posterBgPlaceholder').classList.add('hidden'); bgState = { scale: 1, tx: 0, ty: 0 }; bgWrapper.style.transform = `translate(0px, 0px) scale(1)`; }; reader.readAsDataURL(file); } });
+        bgContainer.addEventListener('mousedown', (e) => { if (e.target.closest('.image-box') || e.target.closest('.box-controls')) return; isBgDragging = true; bgStartX = e.clientX - bgState.tx; bgStartY = e.clientY - bgState.ty; bgContainer.style.cursor = 'grabbing'; });
+        window.addEventListener('mouseup', () => { if (isBgDragging) { isBgDragging = false; bgContainer.style.cursor = 'grab'; } });
+        window.addEventListener('mousemove', (e) => { if (!isBgDragging) return; bgState.tx = e.clientX - bgStartX; bgState.ty = e.clientY - bgStartY; bgWrapper.style.transform = `translate(${bgState.tx}px, ${bgState.ty}px) scale(${bgState.scale})`; });
+        bgContainer.addEventListener('wheel', (e) => { if (e.target.closest('.image-box')) return; e.preventDefault(); const zoomIntensity = 0.05; bgState.scale += e.deltaY > 0 ? -zoomIntensity : zoomIntensity; bgState.scale = Math.max(0.1, Math.min(bgState.scale, 5)); bgWrapper.style.transform = `translate(${bgState.tx}px, ${bgState.ty}px) scale(${bgState.scale})`; });
+        
+        function executePoster() {
+            const skuInputRaw = document.getElementById('posterSkuInput').value; const sku = skuInputRaw.trim(); if (!sku) return alert("Masukkan SKU terlebih dahulu.");
+            let articleData = masterArtikelMap[sku]; if (!articleData) { const foundKey = Object.keys(masterArtikelMap).find(k => k.toLowerCase() === sku.toLowerCase()); if (foundKey) articleData = masterArtikelMap[foundKey]; }
+            const binData = groupedBinData.find(x => x.skuCode.toLowerCase() === sku.toLowerCase());
+            let name = "<<NAMA_ARTIKEL>>"; let genCode = "<<GENERIC_CODE>>"; let price = 0;
+            if (articleData) { name = articleData.name || (binData ? binData.skuName : name); genCode = articleData.genericCode || (binData ? binData.genCode : genCode); price = articleData.price || 0; } else if (binData) { name = binData.skuName; genCode = binData.genCode || sku.substring(0,9); } else { alert("Data SKU belum terdaftar di memori! Silakan upload 'Master Artikel' terlebih dahulu agar teks nama & harga terisi otomatis."); }
+            function cleanArticleName(rawName) { if (!rawName || rawName === "<<NAMA_ARTIKEL>>") return rawName; if (rawName.includes(',')) return rawName.split(',')[0].trim(); let cleaned = rawName.trim(); const pattern = /\s+(BLK|KHK|MAR|NAV|GRY|RED|BLU|YEL|GRN|BRN|WHT|OLV|NOC|NOS|BGE|PRP|PNK|ORG|CAM|ALL\s?SIZE|XS|S|M|L|XL|XXL|2XL|3XL|4XL|\d{2}|\d{3})(\/.*)?$/i; for(let i=0; i<3; i++) { let newCleaned = cleaned.replace(pattern, ''); if (newCleaned === cleaned) break; cleaned = newCleaned; } return cleaned.trim(); }
+            name = cleanArticleName(name); document.getElementById('posterName').innerText = name; document.getElementById('posterGenCode').innerText = genCode; document.getElementById('posterPrice').innerText = price > 0 ? formatRp(price) : "<<HARGA>>";
+            let images = masterGambarMap[sku]; if (!images) { const imgKey = Object.keys(masterGambarMap).find(k => k.toLowerCase() === sku.toLowerCase()); images = imgKey ? masterGambarMap[imgKey] : []; }
+            activePosterImages = images; if (images.length === 0) alert("Gambar tidak ditemukan di memori Master Gambar untuk SKU ini.");
+            document.querySelectorAll('.image-box').forEach((box, idx) => { const wrapperEl = box.querySelector('.draggable-wrapper'); const imgEl = box.querySelector('.draggable-img'); const controls = box.querySelector('.box-controls'); imgStates[idx] = { srcIdx: idx % Math.max(1, images.length), scale: 1, tx: 0, ty: 0 }; if (images.length > 0) { imgEl.src = images[imgStates[idx].srcIdx]; wrapperEl.classList.remove('hidden'); controls.classList.remove('hidden'); applyImgTransform(wrapperEl, imgStates[idx]); } else { wrapperEl.classList.add('hidden'); controls.classList.add('hidden'); } });
+        }
+        document.querySelectorAll('.image-box').forEach((box) => {
+            const idx = parseInt(box.getAttribute('data-idx')); const wrapperEl = box.querySelector('.draggable-wrapper'); const imgEl = box.querySelector('.draggable-img'); let isDragging = false, startX, startY;
+            box.addEventListener('mousedown', (e) => { if(e.target.tagName === 'BUTTON') return; isDragging = true; startX = e.clientX - imgStates[idx].tx; startY = e.clientY - imgStates[idx].ty; box.style.cursor = 'grabbing'; });
+            window.addEventListener('mouseup', () => { isDragging = false; box.style.cursor = 'default'; });
+            window.addEventListener('mousemove', (e) => { if (!isDragging) return; imgStates[idx].tx = e.clientX - startX; imgStates[idx].ty = e.clientY - startY; applyImgTransform(wrapperEl, imgStates[idx]); });
+            box.addEventListener('wheel', (e) => { e.preventDefault(); const zoomIntensity = 0.1; imgStates[idx].scale += e.deltaY > 0 ? -zoomIntensity : zoomIntensity; imgStates[idx].scale = Math.min(Math.max(0.5, imgStates[idx].scale), 5); applyImgTransform(wrapperEl, imgStates[idx]); });
+            box.querySelector('.next-btn').addEventListener('click', () => { if(activePosterImages.length === 0) return; imgStates[idx].srcIdx = (imgStates[idx].srcIdx + 1) % activePosterImages.length; imgEl.src = activePosterImages[imgStates[idx].srcIdx]; });
+            box.querySelector('.prev-btn').addEventListener('click', () => { if(activePosterImages.length === 0) return; imgStates[idx].srcIdx = (imgStates[idx].srcIdx - 1 + activePosterImages.length) % activePosterImages.length; imgEl.src = activePosterImages[imgStates[idx].srcIdx]; });
+        });
+        function applyImgTransform(wrapperEl, state) { wrapperEl.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`; }
+        let activePosterDataUrl = null;
+        function exportPoster() { window.scrollTo(0, 0); const workspace = document.getElementById('posterWorkspace'); document.querySelectorAll('.box-controls').forEach(el => el.classList.add('hidden')); html2canvas(workspace, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' }).then(canvas => { activePosterDataUrl = canvas.toDataURL('image/png'); document.getElementById('posterResultImg').src = activePosterDataUrl; document.getElementById('exportPosterModal').style.display = 'block'; document.querySelectorAll('.box-controls').forEach(el => { if(activePosterImages.length > 0) el.classList.remove('hidden'); }); }).catch(err => { alert("Gagal merender poster."); document.querySelectorAll('.box-controls').forEach(el => { if(activePosterImages.length > 0) el.classList.remove('hidden'); }); }); }
+        function downloadPoster() { if (!activePosterDataUrl) return; const sku = document.getElementById('posterSkuInput').value || 'Poster'; const link = document.createElement('a'); link.download = `Promo_${sku}.png`; link.href = activePosterDataUrl; link.click(); }
+
+        const modalChat = document.getElementById("exportChatModal");
+        document.getElementById("btnExportChat").onclick = function() { modalChat.style.display = "block"; document.getElementById("inputTarget").value = appTargets.gross; generateChatText(); }
+        function closeModal() { modalChat.style.display = "none"; }
+        document.getElementById("inputTrafik").addEventListener('input', generateChatText);
+        function generateChatText() {
+            const selectedDateStr = document.getElementById('dateSelector').value; let titleDate = "", daysPassed = 1;
+            if (selectedDateStr !== 'ALL') { const dObj = new Date(selectedDateStr); if(!isNaN(dObj.getTime())) { titleDate = `HARI ${["MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"][dObj.getDay()]}, ${dObj.getDate().toString().padStart(2, '0')} ${["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"][dObj.getMonth()]} ${dObj.getFullYear()}`; daysPassed = dObj.getDate(); } else titleDate = "TANGGAL INVALID"; } else { if (cleanData.length > 0) { const dObj = new Date([...new Set(cleanData.map(x => x._CleanDate))].sort().pop()); if(!isNaN(dObj.getTime())) { titleDate = `KOMULATIF - ${["MINGGU", "SENIN", "SELASA", "RABU", "KAMIS", "JUMAT", "SABTU"][dObj.getDay()]}, ${dObj.getDate().toString().padStart(2, '0')} ${["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"][dObj.getMonth()]} ${dObj.getFullYear()}`; daysPassed = dObj.getDate(); } else titleDate = "KOMULATIF"; } else titleDate = "KOMULATIF"; }
+            const gross = currentViewData.reduce((s, x) => s + x._Gross, 0), net = currentViewData.reduce((s, x) => s + x._Net, 0), pcs = currentViewData.reduce((s, x) => s + x._Qty, 0), trx = new Set(currentViewData.map(x => x['Invoice No'])).size; const target = appTargets.gross || 0, monthlyGross = cleanData.reduce((s, x) => s + x._Gross, 0), trafik = parseFloat(document.getElementById("inputTrafik").value) || 0; const ach = target > 0 ? (monthlyGross / target) * 100 : 0, sisaTarget = Math.max(0, target - monthlyGross);
+            document.getElementById("chatTextOutput").value = `*SALES ${titleDate}*\nGross          : ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(gross)}\nNetto          : ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(net)}\nPcs            : ${formatNum(pcs)}\nTrafik         : ${formatNum(trafik)}\nTransaksi      : ${formatNum(trx)}\nCR             : ${Math.round(trafik > 0 ? (trx / trafik) * 100 : 0)}%\nBS             : ${formatNum(Math.round(trx > 0 ? (gross / trx) : 0))}\nUPT            : ${formatDec(trx > 0 ? (pcs / trx) : 0)}\nMonthly Gross  : ${formatNum(monthlyGross)}\nMonthly Ach    : ${Math.round(ach)}% ${ach >= 100 ? '🟢' : (ach >= 95 ? '🟠' : '🔴')}\nSisa Target    : ${formatNum(sisaTarget)}\nBy Day         : ${formatNum(Math.round(sisaTarget / Math.max(1, 31 - daysPassed)))}`;
+        }
+        function copyChatText() { document.getElementById("chatTextOutput").select(); document.execCommand('copy'); alert("Teks disalin!"); }
+
+        function openCumulativeExportModal() {
+            if (cleanData.length === 0) return alert("Belum ada data DSR."); const dObj = new Date([...new Set(cleanData.map(x => x._CleanDate))].sort().pop()); if(isNaN(dObj.getTime())) return alert("Format tanggal DSR tidak valid untuk export.");
+            const dayNum = dObj.getDate(); const totalGross = cleanData.reduce((s, x) => s + x._Gross, 0), target = appTargets.gross || 0; const achPct = target > 0 ? (totalGross / target) * 100 : 0, pTrg = (target / new Date(dObj.getFullYear(), dObj.getMonth() + 1, 0).getDate()) * dayNum;
+            const eaGross = cleanData.filter(x => x._TransType.toLowerCase().includes('endless') || x._TransType.toLowerCase().includes('aisle')).reduce((s, x) => s + x._Gross, 0); const wsGross = cleanData.filter(x => x._TransType.toLowerCase().includes('wholesale')).reduce((s, x) => s + x._Gross, 0); const ttGross = cleanData.filter(x => x._TransType.toLowerCase().includes('tour') || x._TransType.toLowerCase().includes('travel')).reduce((s, x) => s + x._Gross, 0); const wiGross = totalGross - (eaGross + wsGross + ttGross);
+            const getEmoji = (pct) => pct >= 100 ? '🟢' : (pct >= 95 ? '🟠' : '🔴'); const getAch = (tPct, actG) => (pTrg*(tPct/100))>0 ? (actG/(pTrg*(tPct/100)))*100 : 0;
+            document.getElementById('cumulativeTextOutput').value = `*Sales Achievement 1 s/d ${dayNum} ${['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'][dObj.getMonth()]} ${dObj.getFullYear()}*\nTarget : ${formatRp(target)}\nGross  : ${formatRp(totalGross)}\nNetto  : ${formatRp(cleanData.reduce((s, x) => s + x._Net, 0))}\nAch    : ${formatDec(achPct)}% ${getEmoji(achPct)}\nGap    : ${formatRp(target - totalGross)}\n\nPencapaian Channel:\n- Walk In : ${formatRp(wiGross)} (${formatDec(getAch(Math.max(0, 100 - ((appTargets.ea||0) + (appTargets.ws||0) + (appTargets.tt||0))), wiGross))}%) ${getEmoji(getAch(Math.max(0, 100 - ((appTargets.ea||0) + (appTargets.ws||0) + (appTargets.tt||0))), wiGross))}\n- Endless Aisle : ${formatRp(eaGross)} (${formatDec(getAch(appTargets.ea||0, eaGross))}%) ${getEmoji(getAch(appTargets.ea||0, eaGross))}\n- Wholesale : ${formatRp(wsGross)} (${formatDec(getAch(appTargets.ws||0, wsGross))}%) ${getEmoji(getAch(appTargets.ws||0, wsGross))}\n- Tour & Travel : ${formatRp(ttGross)} (${formatDec(getAch(appTargets.tt||0, ttGross))}%) ${getEmoji(getAch(appTargets.tt||0, ttGross))}`;
+            document.getElementById('cumulativeExportModal').style.display = 'block';
+        }
+        function closeCumulativeModal() { document.getElementById('cumulativeExportModal').style.display = 'none'; }
+        function copyCumulativeText() { document.getElementById('cumulativeTextOutput').select(); document.execCommand('copy'); alert("Teks disalin!"); }
+
+        function screenshotFullTaggingCard() { switchTab('tab-ra', document.querySelector('button[onclick*="tab-ra"]')); setTimeout(() => { html2canvas(document.getElementById('fullTaggingCard'), { scale: 3, backgroundColor: '#ffffff', logging: false }).then(canvas => { activeScreenshotDataUrl = canvas.toDataURL('image/png'); document.getElementById('screenshotPreviewImg').src = activeScreenshotDataUrl; document.getElementById('screenshotModal').style.display = "block"; }).catch(() => alert("Gagal screenshot tabel.")); }, 100); }
+        function closeScreenshotModal() { document.getElementById('screenshotModal').style.display = "none"; }
+        function downloadScreenshotImage() { if (!activeScreenshotDataUrl) return; const link = document.createElement('a'); link.download = 'Tagging-Per-Head.png'; link.href = activeScreenshotDataUrl; link.click(); }
+
+        window.onclick = function(event) { 
+            if (event.target == document.getElementById('undisplayedModal')) document.getElementById('undisplayedModal').style.display = 'none';
+            if (event.target == modalChat) closeModal(); 
+            if (event.target == document.getElementById('cumulativeExportModal')) closeCumulativeModal();
+            if (event.target == document.getElementById('screenshotModal')) closeScreenshotModal();
+            if (event.target == document.getElementById('galleryModal')) closeGallery();
+            if (event.target == document.getElementById('exportPosterModal')) document.getElementById('exportPosterModal').style.display = 'none';
+        }
+        
+        function openGallery(skuCode, qty) {
+            const images = masterGambarMap[skuCode] || masterGambarMap[skuCode.trim()]; if (!images || images.length === 0) return;
+            let item = groupedBinData.find(x => x.skuCode === skuCode) || globalUndisplayedData.find(x => x.skuCode === skuCode) || globalDoubleDisplayData.find(x => x.skuCode === skuCode) || globalDamageData.find(x => x.skuCode === skuCode);
+            if(item) {
+                document.getElementById('gallerySkuName').innerText = item.skuName;
+                document.getElementById('gallerySkuCode').innerText = item.skuCode;
+            }
+            document.getElementById('galleryQty').innerText = qty;
+
+            // Fetch Price
+            const aData = masterArtikelMap[skuCode] || Object.values(masterArtikelMap).find(a => a.genericCode === (item ? item.genCode : skuCode.substring(0,9)));
+            const itemPrice = aData ? aData.price : 0;
+            document.getElementById('galleryPrice').innerText = formatRp(itemPrice);
+
+            document.getElementById('galleryScrollContainer').innerHTML = images.map(img => `<div class="snap-center shrink-0 w-full h-full flex items-center justify-center bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden p-2"><img src="${img}" class="max-w-full max-h-full object-contain" alt="Product Image"></div>`).join('');
+            document.getElementById('galleryModal').style.display = 'flex';
+        }
+        function closeGallery() { document.getElementById('galleryModal').style.display = 'none'; }
+    </script>
+</body>
+</html>
